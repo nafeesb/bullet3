@@ -1,5 +1,5 @@
 
-project "App_SharedMemoryPhysics"
+project "App_PhysicsServer_SharedMemory"
 
 if _OPTIONS["ios"] then
 	kind "WindowedApp"
@@ -10,13 +10,15 @@ end
 includedirs {".","../../src", "../ThirdPartyLibs",}
 
 links {
-	"Bullet3Common","BulletInverseDynamicsUtils", "BulletInverseDynamics",	"BulletDynamics","BulletCollision", "LinearMath"
+	"Bullet3Common","BulletInverseDynamicsUtils", "BulletInverseDynamics",	"BulletDynamics","BulletCollision", "LinearMath", "BussIK"
 }
 
 language "C++"
 
 myfiles = 
 {
+	"IKTrajectoryHelper.cpp",
+	"IKTrajectoryHelper.h",
 	"PhysicsClient.cpp",
 	"PhysicsClientSharedMemory.cpp",
 	"PhysicsClientExample.cpp",
@@ -40,6 +42,14 @@ myfiles =
 	"PhysicsLoopBack.h",
 	"PhysicsLoopBackC_API.cpp",
 	"PhysicsLoopBackC_API.h",
+	"PhysicsClientSharedMemory_C_API.cpp",
+	"PhysicsClientSharedMemory_C_API.h",
+	"PhysicsClientSharedMemory2_C_API.cpp",
+	"PhysicsClientSharedMemory2_C_API.h",
+	"PhysicsClientSharedMemory2.cpp",
+	"PhysicsClientSharedMemory2.h",
+	"SharedMemoryCommandProcessor.cpp",
+	"SharedMemoryCommandProcessor.h",
 	"PhysicsServerCommandProcessor.cpp",
 	"PhysicsServerCommandProcessor.h",
 	"TinyRendererVisualShapeConverter.cpp",
@@ -63,8 +73,14 @@ myfiles =
 	"../Importers/ImportURDFDemo/UrdfParser.h",
 	"../Importers/ImportURDFDemo/URDF2Bullet.cpp",
 	"../Importers/ImportURDFDemo/URDF2Bullet.h",
+	"../Importers/ImportMJCFDemo/BulletMJCFImporter.cpp",
+	"../Importers/ImportMJCFDemo/BulletMJCFImporter.h",
 	"../Utils/b3ResourcePath.cpp",
-	"../Utils/b3Clock.cpp",	
+	"../Utils/b3Clock.cpp",
+	"../Utils/RobotLoggingUtil.cpp",
+	"../Utils/RobotLoggingUtil.h",
+	"../Utils/ChromeTraceUtil.cpp",
+	"../Utils/ChromeTraceUtil.h",
 	"../../Extras/Serialize/BulletWorldImporter/*",
 	"../../Extras/Serialize/BulletFileLoader/*",	
 	"../Importers/ImportURDFDemo/URDFImporterInterface.h",
@@ -125,7 +141,7 @@ files {
 	end
 
 
-project "App_SharedMemoryPhysics_GUI"
+project "App_PhysicsServer_SharedMemory_GUI"
 
 if _OPTIONS["ios"] then
         kind "WindowedApp"
@@ -134,15 +150,46 @@ else
 end
 defines {"B3_USE_STANDALONE_EXAMPLE"}
 
-includedirs {"../../src"}
+includedirs {"../../src", "../ThirdPartyLibs"}
 
 links {
-        "BulletInverseDynamicsUtils", "BulletInverseDynamics", "BulletDynamics","BulletCollision", "LinearMath", "OpenGL_Window","Bullet3Common"
+        "BulletInverseDynamicsUtils", "BulletInverseDynamics", "BulletDynamics","BulletCollision", "LinearMath", "OpenGL_Window","Bullet3Common","BussIK"
 }
 	initOpenGL()
   initGlew()
 
 language "C++"
+
+	if _OPTIONS["midi"] then
+	
+		defines {"B3_USE_MIDI"}
+
+			
+					
+			 includedirs{"../ThirdPartyLibs/midi"}
+			
+				 files {
+	        	"../ThirdPartyLibs/midi/RtMidi.cpp",
+	        	"../ThirdPartyLibs/midi/RtMidi.h",
+	        	"../ThirdPartyLibs/midi/RtError.h",
+        	} 
+			if os.is("Windows") then
+				links {"winmm"}
+				defines {"__WINDOWS_MM__", "WIN32"}
+			end
+
+			if os.is("Linux") then 
+				defines {"__LINUX_ALSA__"}
+			  links {"asound","pthread"}
+			end
+
+			if os.is("MacOSX") then
+				links{"CoreAudio.framework", "coreMIDI.framework", "Cocoa.framework"}
+				defines {"__MACOSX_CORE__"}
+			end
+		
+	end
+
 
 files {
         myfiles,
@@ -193,8 +240,10 @@ if os.is("MacOSX") then
 	--defines {"__MACOSX_CORE__"}
 end
 
+
+
 if os.is("Windows") then 
-	project "App_SharedMemoryPhysics_VR"
+	project "App_PhysicsServer_SharedMemory_VR"
 	--for now, only enable VR under Windows, until compilation issues are resolved on Mac/Linux
 	defines {"B3_USE_STANDALONE_EXAMPLE","BT_ENABLE_VR"}
 	
@@ -203,7 +252,37 @@ if os.is("Windows") then
 	else	
 		kind "ConsoleApp"
 	end
+
+	if _OPTIONS["midi"] then
 	
+		defines {"B3_USE_MIDI"}
+
+			
+					
+			 includedirs{"../ThirdPartyLibs/midi"}
+			
+				 files {
+	        	"../ThirdPartyLibs/midi/RtMidi.cpp",
+	        	"../ThirdPartyLibs/midi/RtMidi.h",
+	        	"../ThirdPartyLibs/midi/RtError.h",
+        	} 
+			if os.is("Windows") then
+				links {"winmm"}
+				defines {"__WINDOWS_MM__", "WIN32"}
+			end
+
+			if os.is("Linux") then 
+				defines {"__LINUX_ALSA__"}
+			  links {"asound","pthread"}
+			end
+
+			if os.is("MacOSX") then
+				links{"CoreAudio.framework", "coreMIDI.framework", "Cocoa.framework"}
+				defines {"__MACOSX_CORE__"}
+			end
+		
+	end
+		
 	includedirs {
 			".","../../src", "../ThirdPartyLibs",
 			"../ThirdPartyLibs/openvr/headers",
@@ -211,7 +290,7 @@ if os.is("Windows") then
 		}
 						
 	links {
-		"BulletInverseDynamicsUtils", "BulletInverseDynamics","Bullet3Common",	"BulletDynamics","BulletCollision", "LinearMath","OpenGL_Window","openvr_api"
+		"BulletInverseDynamicsUtils", "BulletInverseDynamics","Bullet3Common",	"BulletDynamics","BulletCollision", "LinearMath","OpenGL_Window","openvr_api","BussIK"
 	}
 	
 	
@@ -229,6 +308,9 @@ if os.is("Windows") then
 					"../ExampleBrowser/OpenGLGuiHelper.cpp",
 					"../ExampleBrowser/GL_ShapeDrawer.cpp",
 					"../ExampleBrowser/CollisionShape2TriangleMesh.cpp",
+					"../RenderingExamples/TinyVRGui.cpp",
+					"../RenderingExamples/TimeSeriesCanvas.cpp",
+					"../RenderingExamples/TimeSeriesFontData.cpp",
 					"../ThirdPartyLibs/openvr/samples/shared/lodepng.cpp",
 					"../ThirdPartyLibs/openvr/samples/shared/lodepng.h",
 					"../ThirdPartyLibs/openvr/samples/shared/Matrices.cpp",
@@ -238,7 +320,11 @@ if os.is("Windows") then
 					"../ThirdPartyLibs/openvr/samples/shared/Vectors.h",
 	}
 	if os.is("Windows") then 
-		libdirs {"../ThirdPartyLibs/openvr/lib/win32"}
+		configuration {"x32"}
+			libdirs {"../ThirdPartyLibs/openvr/lib/win32"}
+		configuration {"x64"}
+			libdirs {"../ThirdPartyLibs/openvr/lib/win64"}
+		configuration{}
 	end
 	
 	if os.is("Linux") then initX11() end
@@ -284,3 +370,8 @@ if os.is("Windows") then
 
 
 end
+
+
+include "udp"
+include "tcp"
+

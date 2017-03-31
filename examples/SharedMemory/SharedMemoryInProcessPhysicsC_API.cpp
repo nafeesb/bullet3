@@ -1,14 +1,16 @@
 
 #include "SharedMemoryInProcessPhysicsC_API.h"
+#include "../Utils/b3Clock.h"
 
 #include "PhysicsClientSharedMemory.h"
 #include"../ExampleBrowser/InProcessExampleBrowser.h"
 
-
+#include "Bullet3Common/b3Logging.h"
 class InProcessPhysicsClientSharedMemoryMainThread : public PhysicsClientSharedMemory
 {
     btInProcessExampleBrowserMainThreadInternalData* m_data;
-    
+   b3Clock m_clock;
+ 
 public:
     
     InProcessPhysicsClientSharedMemoryMainThread(int argc, char* argv[])
@@ -37,14 +39,33 @@ public:
     // return non-null if there is a status, nullptr otherwise
     virtual const struct SharedMemoryStatus* processServerStatus()
     {
-        if (btIsExampleBrowserMainThreadTerminated(m_data))
-        {
-            PhysicsClientSharedMemory::disconnectSharedMemory();
-        }
-        
-        btUpdateInProcessExampleBrowserMainThread(m_data);
-        return PhysicsClientSharedMemory::processServerStatus();
-        
+		
+		{
+			if (btIsExampleBrowserMainThreadTerminated(m_data))
+			{
+				PhysicsClientSharedMemory::disconnectSharedMemory();
+			}
+		}
+			{	
+	   		unsigned long int ms = m_clock.getTimeMilliseconds();
+			if (ms>20)
+			{ 
+				B3_PROFILE("m_clock.reset()");
+
+				m_clock.reset(); 
+        			btUpdateInProcessExampleBrowserMainThread(m_data);
+			}
+		}
+		{
+			b3Clock::usleep(0);
+		}
+		const SharedMemoryStatus* stat = 0;
+
+		{
+			stat = PhysicsClientSharedMemory::processServerStatus();
+		}
+
+		return stat;
         
     }
     
@@ -82,7 +103,7 @@ public:
 		newargv[argc+1] = t1;
 		m_data = btCreateInProcessExampleBrowser(newargc,newargv);
 		SharedMemoryInterface* shMem = btGetSharedMemoryInterface(m_data);
-
+		free(newargv);
 		setSharedMemoryInterface(shMem);
 	}
 

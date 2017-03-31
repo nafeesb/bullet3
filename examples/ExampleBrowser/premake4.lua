@@ -10,7 +10,7 @@ project "App_BulletExampleBrowser"
             initOpenCL("clew")
         end
 
-        links{"BulletExampleBrowserLib","gwen", "OpenGL_Window","BulletSoftBody", "BulletInverseDynamicsUtils", "BulletInverseDynamics", "BulletDynamics","BulletCollision","LinearMath","Bullet3Common"}
+        links{"BulletExampleBrowserLib","gwen", "OpenGL_Window","BulletSoftBody", "BulletInverseDynamicsUtils", "BulletInverseDynamics", "BulletDynamics","BulletCollision","LinearMath","BussIK", "Bullet3Common"}
         initOpenGL()
         initGlew()
 
@@ -54,7 +54,8 @@ project "App_BulletExampleBrowser"
 		"../TinyRenderer/tgaimage.cpp",
 		"../TinyRenderer/our_gl.cpp",
 		"../TinyRenderer/TinyRenderer.cpp",
-		"../RenderingExamples/TinyRendererSetup.cpp",
+		"../SharedMemory/IKTrajectoryHelper.cpp",
+		"../SharedMemory/IKTrajectoryHelper.h",
 		"../SharedMemory/PhysicsClientC_API.cpp",
 		"../SharedMemory/PhysicsClientC_API.h",
 		"../SharedMemory/PhysicsServerExample.cpp",
@@ -62,6 +63,14 @@ project "App_BulletExampleBrowser"
 		"../SharedMemory/PhysicsServer.cpp",
 		"../SharedMemory/PhysicsServerSharedMemory.cpp",
 		"../SharedMemory/PhysicsClientSharedMemory.cpp",
+		"../SharedMemory/PhysicsClientSharedMemory_C_API.cpp",
+		"../SharedMemory/PhysicsClientSharedMemory_C_API.h",
+		"../SharedMemory/PhysicsClientSharedMemory2.cpp",
+		"../SharedMemory/PhysicsClientSharedMemory2.h",
+		"../SharedMemory/PhysicsClientSharedMemory2_C_API.cpp",
+		"../SharedMemory/PhysicsClientSharedMemory2_C_API.h",
+		"../SharedMemory/SharedMemoryCommandProcessor.cpp",
+		"../SharedMemory/SharedMemoryCommandProcessor.h",
 		"../SharedMemory/SharedMemoryInProcessPhysicsC_API.cpp",
 		"../SharedMemory/PhysicsClient.cpp",
 		"../SharedMemory/PosixSharedMemory.cpp",
@@ -79,6 +88,8 @@ project "App_BulletExampleBrowser"
 		"../SharedMemory/PhysicsServerCommandProcessor.h",
 		"../SharedMemory/TinyRendererVisualShapeConverter.cpp",
 		"../SharedMemory/TinyRendererVisualShapeConverter.h",
+		"../SharedMemory/SharedMemoryCommands.h",
+		"../SharedMemory/SharedMemoryPublic.h",
 		"../MultiThreading/MultiThreadingExample.cpp",
 		"../MultiThreading/b3PosixThreadSupport.cpp",
 		"../MultiThreading/b3Win32ThreadSupport.cpp",
@@ -88,11 +99,16 @@ project "App_BulletExampleBrowser"
 		"../BasicDemo/BasicExample.*",
 		"../Tutorial/*",
 		"../ExtendedTutorials/*",
+		"../Utils/RobotLoggingUtil.cpp",
+		"../Utils/RobotLoggingUtil.h",
+		"../Evolution/NN3DWalkers.cpp",
+		"../Evolution/NN3DWalkers.h",
 		"../Collision/*",
 		"../RoboticsLearning/*",
 		"../Collision/Internal/*",
 		"../Benchmarks/*",
-		"../CommonInterfaces/*",
+		"../MultiThreadedDemo/*",
+		"../CommonInterfaces/*.h",
 		"../ForkLift/ForkLiftDemo.*",
 		"../Importers/**",
 		"../../Extras/Serialize/BulletWorldImporter/*",
@@ -181,6 +197,9 @@ project "BulletExampleBrowserLib"
 		"OpenGLGuiHelper.cpp",
 		"OpenGLExampleBrowser.cpp",
 		"../Utils/b3Clock.cpp",
+		"../Utils/b3Clock.h",
+		"../Utils/ChromeTraceUtil.cpp",
+		"../Utils/ChromeTraceUtil.h",
 		"*.h",
 		"GwenGUISupport/*.cpp",
 		"GwenGUISupport/*.h",

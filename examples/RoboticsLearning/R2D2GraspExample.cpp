@@ -23,9 +23,6 @@ class R2D2GraspExample : public CommonExampleInterface
 	int m_options;
 	int m_r2d2Index;
 	
-    float m_x;
-    float m_y;
-    float m_z;
 	b3AlignedObjectArray<int> m_movingInstances;
 	enum
 	{
@@ -38,10 +35,7 @@ public:
     :m_app(helper->getAppInterface()),
 	m_guiHelper(helper),
 	m_options(options),
-	m_r2d2Index(-1),
-    m_x(0),
-    m_y(0),
-	m_z(0)
+	m_r2d2Index(-1)
     {
 		m_app->setUpAxis(2);
     }
@@ -70,7 +64,7 @@ public:
 				b3RobotSimLoadFileResults results;
 				if (m_robotSim.loadFile(args, results) && results.m_uniqueObjectIds.size()==1)
 				{
-					int m_r2d2Index = results.m_uniqueObjectIds[0];
+					m_r2d2Index = results.m_uniqueObjectIds[0];
 					int numJoints = m_robotSim.getNumJoints(m_r2d2Index);
 					b3Printf("numJoints = %d",numJoints);
 
@@ -94,11 +88,9 @@ public:
 			{
 				b3RobotSimLoadFileArgs args("");
 				args.m_fileName = "kiva_shelf/model.sdf";
-				args.m_startPosition.setValue(0,0,.5);
-				args.m_startOrientation = b3Quaternion(0,B3_HALF_PI,0);
-				args.m_forceOverrideFixedBase = true;
+                args.m_forceOverrideFixedBase = true;
 				args.m_fileType = B3_SDF_FILE;
-				//args.m_startOrientation = b3Quaternion()
+                args.m_startOrientation = b3Quaternion(0,0,0,1);
                 b3RobotSimLoadFileResults results;
                 m_robotSim.loadFile(args,results);
 			}
@@ -119,7 +111,7 @@ public:
 			b3RobotSimLoadFileArgs args("");
 			b3RobotSimLoadFileResults results;
 			{
-				args.m_fileName = "cube.urdf";
+				args.m_fileName = "cube_soft.urdf";
 				args.m_startPosition.setValue(0,0,2.5);
 				args.m_startOrientation.setEulerZYX(0,0.2,0);
 				m_robotSim.loadFile(args,results);
@@ -142,6 +134,37 @@ public:
 			}
 		}
 	
+        if ((m_options & eROBOTIC_LEARN_ROLLING_FRICTION)!=0)
+        {
+            b3RobotSimLoadFileArgs args("");
+            b3RobotSimLoadFileResults results;
+            {
+                args.m_fileName = "sphere2_rolling_friction.urdf";
+                args.m_startPosition.setValue(0,0,2.5);
+                args.m_startOrientation.setEulerZYX(0,0,0);
+                args.m_useMultiBody = true;
+                m_robotSim.loadFile(args,results);
+            }
+            {
+                args.m_fileName = "sphere2.urdf";
+                args.m_startPosition.setValue(0,2,2.5);
+                args.m_startOrientation.setEulerZYX(0,0,0);
+                args.m_useMultiBody = true;
+                m_robotSim.loadFile(args,results);
+            }
+            {
+                b3RobotSimLoadFileArgs args("");
+                args.m_fileName = "plane.urdf";
+                args.m_startPosition.setValue(0,0,0);
+                args.m_startOrientation.setEulerZYX(0,0.2,0);
+                args.m_useMultiBody = true;
+                args.m_forceOverrideFixedBase = true;
+                b3RobotSimLoadFileResults results;
+                m_robotSim.loadFile(args,results);
+                m_robotSim.setGravity(b3MakeVector3(0,0,-10));
+            }
+        }
+
 		
     }
     virtual void    exitPhysics()

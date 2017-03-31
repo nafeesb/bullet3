@@ -18,6 +18,7 @@ language "C++"
 files {
 	"**.cpp",
 	"**.h",
+	"../CommonInterfaces/*",
 }
 
 
@@ -49,6 +50,7 @@ files {
 	"../ExampleBrowser/OpenGLGuiHelper.cpp",
 	"../ExampleBrowser/GL_ShapeDrawer.cpp",
 	"../ExampleBrowser/CollisionShape2TriangleMesh.cpp",
+	"../CommonInterfaces/*",
 	"../Utils/b3Clock.cpp",
 	"../Utils/b3Clock.h",
 }
@@ -90,6 +92,7 @@ files {
 	"../ExampleBrowser/OpenGLGuiHelper.cpp",
 	"../ExampleBrowser/GL_ShapeDrawer.cpp",
 	"../ExampleBrowser/CollisionShape2TriangleMesh.cpp",
+	"../CommonInterfaces/*",
 	"../TinyRenderer/geometry.cpp",
 	"../TinyRenderer/model.cpp",
 	"../TinyRenderer/tgaimage.cpp",
@@ -130,6 +133,7 @@ files {
         "*.h",
         "../StandaloneMain/main_tinyrenderer_single_example.cpp",
 	"../ExampleBrowser/CollisionShape2TriangleMesh.cpp",
+	"../CommonInterfaces/*",
 	"../OpenGLWindow/SimpleCamera.cpp",
 	"../TinyRenderer/geometry.cpp",
 	"../TinyRenderer/model.cpp",
@@ -175,6 +179,7 @@ files {
         "BasicExample.cpp",
         "*.h",
         "../StandaloneMain/hellovr_opengl_main.cpp",
+	"../CommonInterfaces/*",
 				"../ExampleBrowser/OpenGLGuiHelper.cpp",
 				"../ExampleBrowser/GL_ShapeDrawer.cpp",
 				"../ExampleBrowser/CollisionShape2TriangleMesh.cpp",
@@ -187,7 +192,8 @@ files {
 				"../ThirdPartyLibs/openvr/samples/shared/Vectors.h",
 				"../Utils/b3Clock.cpp",
 				"../Utils/b3Clock.h",
-				
+				"../Utils/ChromeTraceUtil.cpp",
+				"../Utils/ChromeTraceUtil.h",
 }
 
 if os.is("Windows") then 

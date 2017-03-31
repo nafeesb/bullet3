@@ -17,9 +17,9 @@ subject to the following restrictions:
 
 ///todo: make this configurable in the gui
 bool useShadowMap = true;// true;//false;//true;
-int shadowMapWidth=4096;//8192;
+int shadowMapWidth= 4096;
 int shadowMapHeight= 4096;
-float shadowMapWorldSize=25;
+float shadowMapWorldSize=10;
 
 #define MAX_POINTS_IN_BATCH 1024
 #define MAX_LINES_IN_BATCH 1024
@@ -31,13 +31,17 @@ float shadowMapWorldSize=25;
 
 #ifndef __APPLE__
 #ifndef glVertexAttribDivisor
+#ifndef NO_GLEW
 #define glVertexAttribDivisor glVertexAttribDivisorARB
+#endif //NO_GLEW
 #endif //glVertexAttribDivisor
 #ifndef GL_COMPARE_REF_TO_TEXTURE
 #define GL_COMPARE_REF_TO_TEXTURE GL_COMPARE_R_TO_TEXTURE
 #endif //GL_COMPARE_REF_TO_TEXTURE
 #ifndef glDrawElementsInstanced
+#ifndef NO_GLEW
 #define glDrawElementsInstanced glDrawElementsInstancedARB
+#endif //NO_GLEW
 #endif
 #endif //__APPLE__
 #include "GLInstancingRenderer.h"
@@ -163,10 +167,10 @@ struct InternalDataRenderer : public GLInstanceRendererInternalData
 	
 	
 	InternalDataRenderer() :
+	m_activeCamera(&m_defaultCamera1),
 		m_shadowMap(0),
 		m_shadowTexture(0),
-		m_renderFrameBuffer(0),
-		m_activeCamera(&m_defaultCamera1)
+		m_renderFrameBuffer(0)
 	{
 		//clear to zero to make it obvious if the matrix is used uninitialized
 		for (int i=0;i<16;i++)
@@ -329,6 +333,19 @@ void GLInstancingRenderer::writeSingleInstanceTransformToCPU(const float* positi
 }
 
 
+void GLInstancingRenderer::readSingleInstanceTransformFromCPU(int srcIndex, float* position, float* orientation)
+{
+	b3Assert(srcIndex<m_data->m_totalNumInstances);
+	b3Assert(srcIndex>=0);
+	position[0] = m_data->m_instance_positions_ptr[srcIndex*4+0];
+	position[1] = m_data->m_instance_positions_ptr[srcIndex*4+1];
+	position[2] = m_data->m_instance_positions_ptr[srcIndex*4+2];
+	
+	orientation[0] = m_data->m_instance_quaternion_ptr[srcIndex*4+0];
+	orientation[1] = m_data->m_instance_quaternion_ptr[srcIndex*4+1];
+	orientation[2] = m_data->m_instance_quaternion_ptr[srcIndex*4+2];
+	orientation[3] = m_data->m_instance_quaternion_ptr[srcIndex*4+3];
+}
 void GLInstancingRenderer::writeSingleInstanceColorToCPU(double* color, int srcIndex)
 {
 	m_data->m_instance_colors_ptr[srcIndex*4+0]=float(color[0]);
@@ -400,17 +417,32 @@ void GLInstancingRenderer::writeSingleInstanceTransformToGPU(float* position, fl
 void GLInstancingRenderer::writeTransforms()
 {
 
-	b3Assert(glGetError() ==GL_NO_ERROR);
+	{
+		B3_PROFILE("b3Assert(glGetError() 1");
+		b3Assert(glGetError() ==GL_NO_ERROR);
+	}
+	{
+		B3_PROFILE("glBindBuffer");
+		glBindBuffer(GL_ARRAY_BUFFER, m_data->m_vbo);
+	}
 
+	{
+		B3_PROFILE("glFlush()");
+		//without the flush, the glBufferSubData can spike to really slow (seconds slow)
+		glFlush();
+	}
 
-	glBindBuffer(GL_ARRAY_BUFFER, m_data->m_vbo);
-	//glFlush();
-
-	b3Assert(glGetError() ==GL_NO_ERROR);
+	{
+		B3_PROFILE("b3Assert(glGetError() 2");
+		b3Assert(glGetError() ==GL_NO_ERROR);
+	}
 	
 
 #ifdef B3_DEBUG
 	{
+		
+		//B3_PROFILE("m_data->m_totalNumInstances == totalNumInstances");
+
 		int totalNumInstances= 0;
 		for (int k=0;k<m_graphicsInstances.size();k++)
 		{
@@ -427,14 +459,29 @@ void GLInstancingRenderer::writeTransforms()
 //	int SCALE_BUFFER_SIZE = (totalNumInstances*sizeof(float)*3);
 
 #if 1
+	{
+	//	printf("m_data->m_totalNumInstances = %d\n", m_data->m_totalNumInstances);
+		{
+		B3_PROFILE("glBufferSubData pos");
 	glBufferSubData(	GL_ARRAY_BUFFER,m_data->m_maxShapeCapacityInBytes,m_data->m_totalNumInstances*sizeof(float)*4,
  						&m_data->m_instance_positions_ptr[0]);
+		}
+		{
+			B3_PROFILE("glBufferSubData orn");
 	glBufferSubData(	GL_ARRAY_BUFFER,m_data->m_maxShapeCapacityInBytes+POSITION_BUFFER_SIZE,m_data->m_totalNumInstances*sizeof(float)*4,
  						&m_data->m_instance_quaternion_ptr[0]);
+		}
+		{
+			B3_PROFILE("glBufferSubData color");
 	glBufferSubData(	GL_ARRAY_BUFFER,m_data->m_maxShapeCapacityInBytes+ POSITION_BUFFER_SIZE+ORIENTATION_BUFFER_SIZE, m_data->m_totalNumInstances*sizeof(float)*4,
  						&m_data->m_instance_colors_ptr[0]);
+		}
+		{
+			B3_PROFILE("glBufferSubData scale");
 	glBufferSubData(	GL_ARRAY_BUFFER, m_data->m_maxShapeCapacityInBytes+POSITION_BUFFER_SIZE+ORIENTATION_BUFFER_SIZE+COLOR_BUFFER_SIZE,m_data->m_totalNumInstances*sizeof(float)*3,
 					 	&m_data->m_instance_scale_ptr[0]);
+		}
+	}
 #else
 
 	char* orgBase =  (char*)glMapBuffer( GL_ARRAY_BUFFER,GL_READ_WRITE);
@@ -504,9 +551,15 @@ void GLInstancingRenderer::writeTransforms()
 
 #endif
 
-	glBindBuffer(GL_ARRAY_BUFFER, 0);//m_data->m_vbo);
+	{
+		B3_PROFILE("glBindBuffer 2");
+		glBindBuffer(GL_ARRAY_BUFFER, 0);//m_data->m_vbo);
+	}
 
-    b3Assert(glGetError() ==GL_NO_ERROR);
+	{
+			B3_PROFILE("b3Assert(glGetError() 4");
+		b3Assert(glGetError() ==GL_NO_ERROR);
+	}
 
 }
 
@@ -567,7 +620,7 @@ int	GLInstancingRenderer::registerTexture(const unsigned char* texels, int width
 	b3Assert(glGetError() ==GL_NO_ERROR);
 	glActiveTexture(GL_TEXTURE0);
 	int textureIndex = m_data->m_textureHandles.size();
-    const GLubyte*	image= (const GLubyte*)texels;	
+  //  const GLubyte*	image= (const GLubyte*)texels;	
 	GLuint textureHandle;
 	glGenTextures(1,(GLuint*)&textureHandle);
 	glBindTexture(GL_TEXTURE_2D,textureHandle);
@@ -612,7 +665,7 @@ void    GLInstancingRenderer::updateTexture(int textureIndex, const unsigned cha
 
         glBindTexture(GL_TEXTURE_2D,h.m_glTexture);
         b3Assert(glGetError() ==GL_NO_ERROR);
-        const GLubyte*	image= (const GLubyte*)texels;	
+      //  const GLubyte*	image= (const GLubyte*)texels;	
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, h.m_width,h.m_height,0,GL_RGB,GL_UNSIGNED_BYTE,&flippedTexels[0]);
         b3Assert(glGetError() ==GL_NO_ERROR);
         glGenerateMipmap(GL_TEXTURE_2D);
@@ -673,9 +726,13 @@ int GLInstancingRenderer::registerShape(const float* vertices, int numvertices, 
 
 
 	glBindBuffer(GL_ARRAY_BUFFER, m_data->m_vbo);
-	char* dest=  (char*)glMapBuffer( GL_ARRAY_BUFFER,GL_WRITE_ONLY);//GL_WRITE_ONLY
 	int vertexStrideInBytes = 9*sizeof(float);
 	int sz = numvertices*vertexStrideInBytes;
+#if 0
+
+	char* dest=  (char*)glMapBuffer( GL_ARRAY_BUFFER,GL_WRITE_ONLY);//GL_WRITE_ONLY
+	
+	
 #ifdef B3_DEBUG
 	int totalUsed = vertexStrideInBytes*gfxObj->m_vertexArrayOffset+sz;
 	b3Assert(totalUsed<m_data->m_maxShapeCapacityInBytes);
@@ -683,6 +740,10 @@ int GLInstancingRenderer::registerShape(const float* vertices, int numvertices, 
 
 	memcpy(dest+vertexStrideInBytes*gfxObj->m_vertexArrayOffset,vertices,sz);
 	glUnmapBuffer( GL_ARRAY_BUFFER);
+#else
+	glBufferSubData(	GL_ARRAY_BUFFER,vertexStrideInBytes*gfxObj->m_vertexArrayOffset,sz,
+ 						vertices);
+#endif
 
 	glGenBuffers(1, &gfxObj->m_index_vbo);
 
@@ -1454,6 +1515,8 @@ void GLInstancingRenderer::renderSceneInternal(int renderMode)
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 
+
+
 			float l_ClampColor[] = {1.0, 1.0, 1.0, 1.0};
 			glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, l_ClampColor);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
@@ -1475,12 +1538,12 @@ void GLInstancingRenderer::renderSceneInternal(int renderMode)
 //		m_data->m_shadowMap->disable();
 	//	return;
 		glEnable(GL_CULL_FACE);
-		glCullFace(GL_BACK); // Cull back-facing triangles -> draw only front-facing triangles
+		glCullFace(GL_FRONT); // Cull back-facing triangles -> draw only front-facing triangles
 
 	b3Assert(glGetError() ==GL_NO_ERROR);
 	} else
 	{
-		//glDisable(GL_CULL_FACE);
+		glEnable(GL_CULL_FACE);
 		glCullFace(GL_BACK);
 
 	}

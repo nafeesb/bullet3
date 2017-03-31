@@ -155,24 +155,7 @@ ImportSDFSetup::~ImportSDFSetup()
     delete m_data;
 }
 
-static btVector4 colors[4] =
-{
-	btVector4(1,0,0,1),
-	btVector4(0,1,0,1),
-	btVector4(0,1,1,1),
-	btVector4(1,1,0,1),
-};
 
-
-static btVector3 selectColor()
-{
-
-	static int curColor = 0;
-	btVector4 color = colors[curColor];
-	curColor++;
-	curColor&=3;
-	return color;
-}
 
 void ImportSDFSetup::setFileName(const char* urdfFileName)
 {
@@ -227,12 +210,12 @@ void ImportSDFSetup::initPhysics()
 
 
 			//todo: move these internal API called inside the 'ConvertURDF2Bullet' call, hidden from the user
-			int rootLinkIndex = u2b.getRootLinkIndex();
-			b3Printf("urdf root link index = %d\n",rootLinkIndex);
+			//int rootLinkIndex = u2b.getRootLinkIndex();
+			//b3Printf("urdf root link index = %d\n",rootLinkIndex);
 			MyMultiBodyCreator creation(m_guiHelper);
 
             u2b.getRootTransformInWorld(rootTrans);
-			ConvertURDF2Bullet(u2b,creation, rootTrans,m_dynamicsWorld,m_useMultiBody,u2b.getPathPrefix(),true);
+			ConvertURDF2Bullet(u2b,creation, rootTrans,m_dynamicsWorld,m_useMultiBody,u2b.getPathPrefix(),CUF_USE_SDF);
 			mb = creation.getBulletMultiBody();
 			
 			

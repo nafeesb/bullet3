@@ -8,7 +8,6 @@
 #include "Bullet3Common/b3FileUtils.h"
 #include "../../ThirdPartyLibs/stb_image/stb_image.h"
 
-
 bool b3ImportMeshUtility::loadAndRegisterMeshFromFileInternal(const std::string& fileName, b3ImportMeshData& meshData)
 {
 
@@ -31,7 +30,7 @@ bool b3ImportMeshUtility::loadAndRegisterMeshFromFileInternal(const std::string&
 		
 		GLInstanceGraphicsShape* gfxShape = btgCreateGraphicsShapeFromWavefrontObj(shapes);
 		
-		int textureIndex = -1;
+		//int textureIndex = -1;
 		//try to load some texture
 		for (int i=0;i<shapes.size();i++)
 		{

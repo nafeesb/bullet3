@@ -25,7 +25,8 @@ public:
     virtual bool loadSDF(const char* fileName, bool forceFixedBase = false);
     virtual int getNumModels() const;
     virtual void activateModel(int modelIndex);
-    
+    virtual void setBodyUniqueId(int bodyId);
+    virtual int getBodyUniqueId() const;
 	const char* getPathPrefix();
 
 	void printTree(); //for debugging
@@ -33,6 +34,8 @@ public:
 	virtual int getRootLinkIndex() const;
     
     virtual void getLinkChildIndices(int linkIndex, btAlignedObjectArray<int>& childLinkIndices) const;
+    
+	virtual std::string getBodyName() const;
 
     virtual std::string getLinkName(int linkIndex) const;
 
@@ -45,12 +48,13 @@ public:
     virtual void  getMassAndInertia(int linkIndex, btScalar& mass,btVector3& localInertiaDiagonal, btTransform& inertialFrame) const;
 
     virtual bool getJointInfo(int urdfLinkIndex, btTransform& parent2joint, btTransform& linkTransformInWorld, btVector3& jointAxisInJointSpace, int& jointType, btScalar& jointLowerLimit, btScalar& jointUpperLimit, btScalar& jointDamping, btScalar& jointFriction) const;
-    
+    virtual bool getJointInfo2(int urdfLinkIndex, btTransform& parent2joint, btTransform& linkTransformInWorld, btVector3& jointAxisInJointSpace, int& jointType, btScalar& jointLowerLimit, btScalar& jointUpperLimit, btScalar& jointDamping, btScalar& jointFriction, btScalar& jointMaxForce, btScalar& jointMaxVelocity) const;
+
     virtual bool getRootTransformInWorld(btTransform& rootTransformInWorld) const;
 
     virtual int convertLinkVisualShapes(int linkIndex, const char* pathPrefix, const btTransform& inertialFrame) const;
 
-    virtual void convertLinkVisualShapes2(int linkIndex, const char* pathPrefix, const btTransform& inertialFrame, class btCollisionObject* colObj) const;
+    virtual void convertLinkVisualShapes2(int linkIndex, int urdfIndex, const char* pathPrefix, const btTransform& inertialFrame, class btCollisionObject* colObj, int bodyUniqueId) const;
 
     ///todo(erwincoumans) refactor this convertLinkCollisionShapes/memory allocation
     

@@ -42,15 +42,51 @@ struct OpenGLGuiHelper : public GUIHelperInterface
 
 	virtual void setUpAxis(int axis);
 	
+    
 	virtual void resetCamera(float camDist, float pitch, float yaw, float camPosX,float camPosY, float camPosZ);
 	
-	virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, float* depthBuffer, int depthBufferSizeInPixels, int startPixelIndex, int destinationWidth, int destinationHeight, int* numPixelsCopied);
+	virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], 
+                                  unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, 
+                                  float* depthBuffer, int depthBufferSizeInPixels, 
+                                  int* segmentationMaskBuffer, int segmentationMaskBufferSizeInPixels,
+                                  int startPixelIndex, int destinationWidth, 
+                                  int destinationHeight, int* numPixelsCopied);
 
 	virtual void autogenerateGraphicsObjects(btDiscreteDynamicsWorld* rbWorld) ;
     
     virtual void drawText3D( const char* txt, float posX, float posY, float posZ, float size);
 
+	virtual int		addUserDebugText3D( const char* txt, const double positionXYZ[3], const double	textColorRGB[3], double size, double lifeTime)
+	{
+		return -1;
+	}
+	virtual int		addUserDebugLine(const double	debugLineFromXYZ[3], const double	debugLineToXYZ[3], const double	debugLineColorRGB[3], double lineWidth, double lifeTime )
+	{
+		return -1;
+	}
+	virtual int		addUserDebugParameter(const char* txt, double	rangeMin, double	rangeMax, double startValue)
+	{
+		return -1;
+	}
+
+	virtual void	removeUserDebugItem( int debugItemUniqueId)
+	{
+	}
+	virtual void	removeAllUserDebugItems( )
+	{
+	}
+
+
 	void renderInternalGl2(int  pass, const btDiscreteDynamicsWorld* dynamicsWorld);
+
+	void setVRMode(bool vrMode);
+
+	void setVisualizerFlag(int flag, int enable);
+
+	virtual void	setVisualizerFlagCallback(VisualizerFlagCallback callback);
+
+	virtual void	dumpFramesToVideo(const char* mp4FileName);
+
 };
 
 #endif //OPENGL_GUI_HELPER_H

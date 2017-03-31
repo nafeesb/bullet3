@@ -12,6 +12,10 @@ struct CommonParameterInterface;
 struct CommonRenderInterface;
 struct CommonGraphicsApp;
 
+
+
+typedef void (*VisualizerFlagCallback)(int flag, bool enable);
+
 ///The Bullet 2 GraphicsPhysicsBridge let's the graphics engine create graphics representation and synchronize
 struct GUIHelperInterface
 {
@@ -46,12 +50,43 @@ struct GUIHelperInterface
 
 	virtual void resetCamera(float camDist, float pitch, float yaw, float camPosX,float camPosY, float camPosZ)=0;
 	
-	virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, float* depthBuffer, int depthBufferSizeInPixels, int startPixelIndex, int destinationWidth, int destinationHeight, int* numPixelsCopied)=0;
+    virtual void setVisualizerFlag(int flag, int enable){};
+    
+	virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], 
+                                  unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, 
+                                  float* depthBuffer, int depthBufferSizeInPixels, 
+                                  int startPixelIndex, int destinationWidth, int destinationHeight, int* numPixelsCopied)
+  {
+      copyCameraImageData(viewMatrix,projectionMatrix,pixelsRGBA,rgbaBufferSizeInPixels,
+                           depthBuffer,depthBufferSizeInPixels,
+                           0,0,
+                           startPixelIndex,destinationWidth,
+                           destinationHeight,numPixelsCopied);
+  }
+
+    virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], 
+                                  unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, 
+                                  float* depthBuffer, int depthBufferSizeInPixels, 
+                                  int* segmentationMaskBuffer, int segmentationMaskBufferSizeInPixels,
+                                  int startPixelIndex, int destinationWidth, int destinationHeight, int* numPixelsCopied)=0;
 
 	virtual void autogenerateGraphicsObjects(btDiscreteDynamicsWorld* rbWorld) =0;
 	
 	virtual void drawText3D( const char* txt, float posX, float posZY, float posZ, float size)=0;
 
+
+	
+	virtual int		addUserDebugText3D( const char* txt, const double posisionXYZ[3], const double	textColorRGB[3], double size, double lifeTime){return -1;};
+	virtual int		addUserDebugLine(const double	debugLineFromXYZ[3], const double	debugLineToXYZ[3], const double	debugLineColorRGB[3], double lineWidth, double lifeTime ){return -1;};
+	virtual int		addUserDebugParameter(const char* txt, double	rangeMin, double	rangeMax, double startValue){return -1;};
+	virtual int		readUserDebugParameter(int itemUniqueId, double* value) { return 0;}
+
+	virtual void	removeUserDebugItem( int debugItemUniqueId){};
+	virtual void	removeAllUserDebugItems( ){};
+	virtual void	setVisualizerFlagCallback(VisualizerFlagCallback callback){}
+
+	//empty name stops dumping video
+	virtual void	dumpFramesToVideo(const char* mp4FileName) {};
 
 };
 
@@ -107,7 +142,12 @@ struct DummyGUIHelper : public GUIHelperInterface
 	{
 	}
 
-	virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, float* depthBuffer, int depthBufferSizeInPixels, int startPixelIndex, int width, int height, int* numPixelsCopied)
+	virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], 
+                                  unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, 
+                                  float* depthBuffer, int depthBufferSizeInPixels,
+                                  int* segmentationMaskBuffer, int segmentationMaskBufferSizeInPixels,
+                                  int startPixelIndex, int width, int height, int* numPixelsCopied)
+	
 	{
         if (numPixelsCopied)
             *numPixelsCopied = 0;
@@ -120,7 +160,22 @@ struct DummyGUIHelper : public GUIHelperInterface
 	virtual void drawText3D( const char* txt, float posX, float posZY, float posZ, float size)
 	{
 	}
-	
+
+	virtual int		addUserDebugText3D( const char* txt, const double positionXYZ[3], const double	textColorRGB[3], double size, double lifeTime)
+	{
+		return -1;
+	}
+	virtual int		addUserDebugLine(const double	debugLineFromXYZ[3], const double	debugLineToXYZ[3], const double	debugLineColorRGB[3], double lineWidth, double lifeTime )
+	{
+		return -1;
+	}
+	virtual void	removeUserDebugItem( int debugItemUniqueId)
+	{
+	}
+	virtual void	removeAllUserDebugItems( )
+	{
+	}
+
 };
 
 #endif //GUI_HELPER_INTERFACE_H

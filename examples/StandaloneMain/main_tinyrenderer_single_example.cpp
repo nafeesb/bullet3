@@ -230,10 +230,13 @@ struct TinyRendererGUIHelper : public GUIHelperInterface
 								renderObj->m_projectionMatrix[i][j] = projMat[i+4*j];
 								renderObj->m_modelMatrix[i][j] = modelMat[i+4*j];
 								renderObj->m_viewMatrix[i][j] = viewMat[i+4*j];
-								renderObj->m_localScaling = colObj->getCollisionShape()->getLocalScaling();
-								renderObj->m_lightDirWorld = lightDirWorld;
 							}
 						}
+                        renderObj->m_localScaling = colObj->getCollisionShape()->getLocalScaling();
+                        renderObj->m_lightDirWorld = lightDirWorld;
+                        renderObj->m_lightAmbientCoeff = 0.6;
+                        renderObj->m_lightDiffuseCoeff = 0.35;
+                        renderObj->m_lightSpecularCoeff = 0.05;
 						TinyRenderer::renderObject(*renderObj);
 					}
 				}
@@ -348,7 +351,12 @@ struct TinyRendererGUIHelper : public GUIHelperInterface
 
 	}
 
-	virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16],unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, float* depthBuffer, int depthBufferSizeInPixels, int startPixelIndex, int width, int height, int* numPixelsCopied)
+	
+	virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], 
+		unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, 
+		float* depthBuffer, int depthBufferSizeInPixels, 
+		int* segmentationMaskBuffer, int segmentationMaskBufferSizeInPixels,
+		int startPixelIndex, int destinationWidth, int destinationHeight, int* numPixelsCopied)
 	{
 		if (numPixelsCopied)
 			*numPixelsCopied = 0;
@@ -373,6 +381,20 @@ struct TinyRendererGUIHelper : public GUIHelperInterface
 	}
     
 	virtual void drawText3D( const char* txt, float posX, float posZY, float posZ, float size)
+	{
+	}
+		virtual int		addUserDebugText3D( const char* txt, const double positionXYZ[3], const double	textColorRGB[3], double size, double lifeTime)
+	{
+		return -1;
+	}
+	virtual int		addUserDebugLine(const double	debugLineFromXYZ[3], const double	debugLineToXYZ[3], const double	debugLineColorRGB[3], double lineWidth, double lifeTime )
+	{
+		return -1;
+	}
+	virtual void	removeUserDebugItem( int debugItemUniqueId)
+	{
+	}
+	virtual void	removeAllUserDebugItems( )
 	{
 	}
 };

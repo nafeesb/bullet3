@@ -8,8 +8,8 @@ UrdfParser::UrdfParser()
 :m_parseSDF(false),
 m_activeSdfModel(-1)
 {
+	m_urdf2Model.m_sourceFile = "IN_MEMORY_STRING"; // if loadUrdf() called later, source file name will be replaced with real
 }
-
 
 UrdfParser::~UrdfParser()
 {
@@ -18,6 +18,7 @@ UrdfParser::~UrdfParser()
     for (int i=0;i<m_tmpModels.size();i++)
     {
         cleanModel(m_tmpModels[i]);
+		delete m_tmpModels[i];
     }
     m_sdfModels.clear();
     m_tmpModels.clear();
@@ -294,8 +295,19 @@ bool UrdfParser::parseInertia(UrdfInertia& inertia, TiXmlElement* config, ErrorL
             inertia.m_izz  = urdfLexicalCast<double>(izz->GetText());
         } else
         {
-            logger->reportError("Inertial: inertia element must have ixx,ixy,ixz,iyy,iyz,izz child elements");
-            return false;
+			if (ixx && iyy && izz)
+			{
+				inertia.m_ixx  = urdfLexicalCast<double>(ixx->GetText());
+				inertia.m_ixy  = 0;
+				inertia.m_ixz  = 0;
+				inertia.m_iyy  = urdfLexicalCast<double>(iyy->GetText());
+				inertia.m_iyz  = 0;
+				inertia.m_izz  = urdfLexicalCast<double>(izz->GetText());
+			} else
+			{
+	            logger->reportError("Inertial: inertia element must have ixx,ixy,ixz,iyy,iyz,izz child elements");
+		        return false;
+			}
         }
     } else
     {
@@ -303,15 +315,29 @@ bool UrdfParser::parseInertia(UrdfInertia& inertia, TiXmlElement* config, ErrorL
             inertia_xml->Attribute("iyy") && inertia_xml->Attribute("iyz") &&
             inertia_xml->Attribute("izz")))
         {
-          logger->reportError("Inertial: inertia element must have ixx,ixy,ixz,iyy,iyz,izz attributes");
-          return false;
-        }
-        inertia.m_ixx  = urdfLexicalCast<double>(inertia_xml->Attribute("ixx"));
-        inertia.m_ixy  = urdfLexicalCast<double>(inertia_xml->Attribute("ixy"));
-        inertia.m_ixz  = urdfLexicalCast<double>(inertia_xml->Attribute("ixz"));
-        inertia.m_iyy  = urdfLexicalCast<double>(inertia_xml->Attribute("iyy"));
-        inertia.m_iyz  = urdfLexicalCast<double>(inertia_xml->Attribute("iyz"));
-        inertia.m_izz  = urdfLexicalCast<double>(inertia_xml->Attribute("izz"));
+			if ((inertia_xml->Attribute("ixx") && inertia_xml->Attribute("iyy") &&
+            inertia_xml->Attribute("izz")))
+			{
+				inertia.m_ixx  = urdfLexicalCast<double>(inertia_xml->Attribute("ixx"));
+				inertia.m_ixy  = 0;
+				inertia.m_ixz  = 0;
+				inertia.m_iyy  = urdfLexicalCast<double>(inertia_xml->Attribute("iyy"));
+				inertia.m_iyz  = 0;
+				inertia.m_izz  = urdfLexicalCast<double>(inertia_xml->Attribute("izz"));
+			} else
+			{
+	          logger->reportError("Inertial: inertia element must have ixx,ixy,ixz,iyy,iyz,izz attributes");
+		      return false;
+			}
+        } else
+		{
+			inertia.m_ixx  = urdfLexicalCast<double>(inertia_xml->Attribute("ixx"));
+			inertia.m_ixy  = urdfLexicalCast<double>(inertia_xml->Attribute("ixy"));
+			inertia.m_ixz  = urdfLexicalCast<double>(inertia_xml->Attribute("ixz"));
+			inertia.m_iyy  = urdfLexicalCast<double>(inertia_xml->Attribute("iyy"));
+			inertia.m_iyz  = urdfLexicalCast<double>(inertia_xml->Attribute("iyz"));
+			inertia.m_izz  = urdfLexicalCast<double>(inertia_xml->Attribute("izz"));
+		}
     }
 	return true;
     
@@ -375,55 +401,78 @@ bool UrdfParser::parseGeometry(UrdfGeometry& geom, TiXmlElement* g, ErrorLogger*
 		  logger->reportError("Cylinder shape must have both length and radius attributes");
 		  return false;
 	  }
-		geom.m_cylinderRadius = urdfLexicalCast<double>(shape->Attribute("radius"));
-		geom.m_cylinderLength = urdfLexicalCast<double>(shape->Attribute("length"));
+		geom.m_hasFromTo = false;
+		geom.m_capsuleRadius = urdfLexicalCast<double>(shape->Attribute("radius"));
+		geom.m_capsuleHeight = urdfLexicalCast<double>(shape->Attribute("length"));
 		
 	}
-	
-  else if (type_name == "mesh")
-  {
-	  geom.m_type = URDF_GEOM_MESH;
-      if (m_parseSDF)
-      {
-          TiXmlElement* scale = shape->FirstChildElement("scale");
-          if (0==scale)
-          {
-              geom.m_meshScale.setValue(1,1,1);
-          }
-          else
-          {
-              parseVector3(geom.m_meshScale,scale->GetText(),logger);
-          }
-          
-          TiXmlElement* filename = shape->FirstChildElement("uri");
-          geom.m_meshFileName = filename->GetText();
-      }
-      else
-      {
-          if (!shape->Attribute("filename")) {
-              logger->reportError("Mesh must contain a filename attribute");
-              return false;
-          }
-          
-          geom.m_meshFileName = shape->Attribute("filename");
-		  geom.m_meshScale.setValue(1,1,1);
+	else if (type_name == "capsule")
+	{
+		geom.m_type = URDF_GEOM_CAPSULE;
+		if (!shape->Attribute("length") ||
+			!shape->Attribute("radius"))
+		{
+			logger->reportError("Capsule shape must have both length and radius attributes");
+			return false;
+		}
+		geom.m_hasFromTo = false;
+		geom.m_capsuleRadius = urdfLexicalCast<double>(shape->Attribute("radius"));
+		geom.m_capsuleHeight = urdfLexicalCast<double>(shape->Attribute("length"));
+	}
+	else if (type_name == "mesh")
+	{
+		geom.m_type = URDF_GEOM_MESH;
+		geom.m_meshScale.setValue(1,1,1);
+		std::string fn;
 
-		  if (shape->Attribute("scale"))
-          {
-              if (!parseVector3(geom.m_meshScale,shape->Attribute("scale"),logger))
-			  {
-				  logger->reportWarning("scale should be a vector3, not single scalar. Workaround activated.\n");
-				  std::string scalar_str = shape->Attribute("scale");
-				  double scaleFactor = urdfLexicalCast<double>(scalar_str.c_str());
-				  if (scaleFactor)
-				  {
-					  geom.m_meshScale.setValue(scaleFactor,scaleFactor,scaleFactor);
-				  }
-			  }
-          } else
-          {
-          }
-      }
+		if (m_parseSDF)
+		{
+			if (TiXmlElement* scale = shape->FirstChildElement("scale"))
+			{
+				parseVector3(geom.m_meshScale,scale->GetText(),logger);
+			}
+			if (TiXmlElement* filename = shape->FirstChildElement("uri"))
+			{
+				fn = filename->GetText();
+			}
+		}
+		else
+		{
+			// URDF
+			if (shape->Attribute("filename"))
+			{
+				fn = shape->Attribute("filename");
+			}
+			if (shape->Attribute("scale"))
+			{
+				if (!parseVector3(geom.m_meshScale, shape->Attribute("scale"), logger))
+				{
+					logger->reportWarning("Scale should be a vector3, not single scalar. Workaround activated.\n");
+					std::string scalar_str = shape->Attribute("scale");
+					double scaleFactor = urdfLexicalCast<double>(scalar_str.c_str());
+					if (scaleFactor)
+					{
+						geom.m_meshScale.setValue(scaleFactor, scaleFactor, scaleFactor);
+					}
+				}
+			}
+		}
+
+		if (fn.empty())
+		{
+			logger->reportError("Mesh filename is empty");
+			return false;
+		}
+
+		geom.m_meshFileName = fn;
+		bool success = findExistingMeshFile(
+			m_urdf2Model.m_sourceFile, fn, sourceFileLocation(shape),
+			&geom.m_meshFileName, &geom.m_meshFileType);
+		if (!success)
+		{
+			// warning already printed
+			return false;
+		}
   }
   else
   {
@@ -489,6 +538,9 @@ bool UrdfParser::parseCollision(UrdfCollision& collision, TiXmlElement* config, 
 	if (name_char)
 		collision.m_name = name_char;
 	
+	const char *concave_char = config->Attribute("concave");
+	if (concave_char)
+		collision.m_flags |= URDF_FORCE_CONCAVE_TRIMESH;
 	
 	return true;
 }
@@ -524,7 +576,7 @@ bool UrdfParser::parseVisual(UrdfModel& model, UrdfVisual& visual, TiXmlElement*
   if (name_char)
 	  visual.m_name = name_char;
 
-	visual.m_hasLocalMaterial = false;
+	visual.m_geometry.m_hasLocalMaterial = false;
 	
   // Material
   TiXmlElement *mat = config->FirstChildElement("material");
@@ -537,15 +589,16 @@ bool UrdfParser::parseVisual(UrdfModel& model, UrdfVisual& visual, TiXmlElement*
         matPtr->m_name = "mat";
 		if (name_char)
 			matPtr->m_name = name_char;
+		model.m_materials.insert(matPtr->m_name.c_str(),matPtr);
         TiXmlElement *diffuse = mat->FirstChildElement("diffuse");
         if (diffuse) {
             std::string diffuseText = diffuse->GetText();
             btVector4 rgba(1,0,0,1);
             parseVector4(rgba,diffuseText);
             matPtr->m_rgbaColor = rgba;
-            model.m_materials.insert(matPtr->m_name.c_str(),matPtr);
+            
             visual.m_materialName = matPtr->m_name;
-            visual.m_hasLocalMaterial = true;
+            visual.m_geometry.m_hasLocalMaterial = true;
         }
     } 
     else
@@ -564,11 +617,20 @@ bool UrdfParser::parseVisual(UrdfModel& model, UrdfVisual& visual, TiXmlElement*
           TiXmlElement *c = mat->FirstChildElement("color");
           if (t||c)
           {
-              if (parseMaterial(visual.m_localMaterial, mat,logger))
+              if (parseMaterial(visual.m_geometry.m_localMaterial, mat,logger))
               {
-                  UrdfMaterial* matPtr = new UrdfMaterial(visual.m_localMaterial);
+                  UrdfMaterial* matPtr = new UrdfMaterial(visual.m_geometry.m_localMaterial);
+				  
+				  UrdfMaterial** oldMatPtrPtr = model.m_materials[matPtr->m_name.c_str()];
+				  if (oldMatPtrPtr)
+				  {
+					  UrdfMaterial* oldMatPtr = *oldMatPtrPtr;
+					  model.m_materials.remove(matPtr->m_name.c_str());
+					  if (oldMatPtr)
+						  delete oldMatPtr;
+				  }
                   model.m_materials.insert(matPtr->m_name.c_str(),matPtr);
-                  visual.m_hasLocalMaterial = true;
+                  visual.m_geometry.m_hasLocalMaterial = true;
               }
           }
       }
@@ -646,6 +708,129 @@ bool UrdfParser::parseLink(UrdfModel& model, UrdfLink& link, TiXmlElement *confi
 			}
 		}
           }
+          
+          {
+              TiXmlElement *rolling_xml = ci->FirstChildElement("rolling_friction");
+              if (rolling_xml)
+              {
+                  if (m_parseSDF)
+                  {
+                      link.m_contactInfo.m_rollingFriction = urdfLexicalCast<double>(rolling_xml->GetText());
+                      link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_ROLLING_FRICTION;
+                  } else
+                  {
+                      if (!rolling_xml->Attribute("value"))
+                      {
+                          logger->reportError("Link/contact: rolling friction element must have value attribute");
+                          return false;
+                      }
+                      
+                      link.m_contactInfo.m_rollingFriction = urdfLexicalCast<double>(rolling_xml->Attribute("value"));
+                      link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_ROLLING_FRICTION;
+                      
+                  }
+              }
+          }
+
+		  {
+			  TiXmlElement *restitution_xml = ci->FirstChildElement("restitution");
+			  if (restitution_xml)
+			  {
+				  if (m_parseSDF)
+				  {
+					  link.m_contactInfo.m_restitution = urdfLexicalCast<double>(restitution_xml->GetText());
+					  link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_RESTITUTION;
+				  }
+				  else
+				  {
+					  if (!restitution_xml->Attribute("value"))
+					  {
+						  logger->reportError("Link/contact: restitution element must have value attribute");
+						  return false;
+					  }
+
+					  link.m_contactInfo.m_restitution = urdfLexicalCast<double>(restitution_xml->Attribute("value"));
+					  link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_RESTITUTION;
+
+				  }
+			  }
+		  }
+
+          {
+              TiXmlElement *spinning_xml = ci->FirstChildElement("spinning_friction");
+              if (spinning_xml)
+              {
+                  if (m_parseSDF)
+                  {
+                      link.m_contactInfo.m_spinningFriction = urdfLexicalCast<double>(spinning_xml->GetText());
+                      link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_SPINNING_FRICTION;
+                  } else
+                  {
+                      if (!spinning_xml->Attribute("value"))
+                      {
+                          logger->reportError("Link/contact: spinning friction element must have value attribute");
+                          return false;
+                      }
+                      
+                      link.m_contactInfo.m_spinningFriction = urdfLexicalCast<double>(spinning_xml->Attribute("value"));
+                      link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_SPINNING_FRICTION;
+                      
+                  }
+              }
+          }
+          {
+          	TiXmlElement *friction_anchor = ci->FirstChildElement("friction_anchor");
+            if (friction_anchor)
+            {
+            	link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_FRICTION_ANCHOR;
+            }
+          }
+           {
+           
+              TiXmlElement *stiffness_xml = ci->FirstChildElement("stiffness");
+              if (stiffness_xml)
+              {
+                  if (m_parseSDF)
+                  {
+                      link.m_contactInfo.m_contactStiffness = urdfLexicalCast<double>(stiffness_xml->GetText());
+                      link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_STIFFNESS_DAMPING;
+                  } else
+                  {
+                      if (!stiffness_xml->Attribute("value"))
+                      {
+                          logger->reportError("Link/contact: stiffness element must have value attribute");
+                          return false;
+                      }
+                      
+                      link.m_contactInfo.m_contactStiffness = urdfLexicalCast<double>(stiffness_xml->Attribute("value"));
+                      link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_STIFFNESS_DAMPING;
+                      
+                  }
+              }
+            }
+            {
+           
+              TiXmlElement *damping_xml = ci->FirstChildElement("damping");
+              if (damping_xml)
+              {
+                  if (m_parseSDF)
+                  {
+                      link.m_contactInfo.m_contactDamping = urdfLexicalCast<double>(damping_xml->GetText());
+                      link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_STIFFNESS_DAMPING;
+                  } else
+                  {
+                      if (!damping_xml->Attribute("value"))
+                      {
+                          logger->reportError("Link/contact: damping element must have value attribute");
+                          return false;
+                      }
+                      
+                      link.m_contactInfo.m_contactDamping = urdfLexicalCast<double>(damping_xml->Attribute("value"));
+                      link.m_contactInfo.m_flags |= URDF_CONTACT_HAS_STIFFNESS_DAMPING;
+                      
+                  }
+              }
+            }
 	  }
 	}
 
@@ -686,7 +871,8 @@ bool UrdfParser::parseLink(UrdfModel& model, UrdfLink& link, TiXmlElement *confi
   for (TiXmlElement* vis_xml = config->FirstChildElement("visual"); vis_xml; vis_xml = vis_xml->NextSiblingElement("visual"))
   {
 	  UrdfVisual visual;
-	  
+	  visual.m_sourceFileLocation = sourceFileLocation(vis_xml);
+
 	  if (parseVisual(model, visual, vis_xml,logger))
 	  {
 		  link.m_visualArray.push_back(visual);
@@ -705,6 +891,8 @@ bool UrdfParser::parseLink(UrdfModel& model, UrdfLink& link, TiXmlElement *confi
   for (TiXmlElement* col_xml = config->FirstChildElement("collision"); col_xml; col_xml = col_xml->NextSiblingElement("collision"))
   {
 	  UrdfCollision col;
+	  col.m_sourceFileLocation = sourceFileLocation(col_xml);
+
 	  if (parseCollision(col, col_xml,logger))
 	  {      
 		  link.m_collisionArray.push_back(col);
@@ -722,7 +910,7 @@ bool UrdfParser::parseLink(UrdfModel& model, UrdfLink& link, TiXmlElement *confi
 bool UrdfParser::parseJointLimits(UrdfJoint& joint, TiXmlElement* config, ErrorLogger* logger)
 {
 	joint.m_lowerLimit = 0.f;
-	joint.m_upperLimit = 0.f;
+	joint.m_upperLimit = -1.f;
 	joint.m_effortLimit = 0.f;
 	joint.m_velocityLimit = 0.f;
 	joint.m_jointDamping = 0.f;
@@ -963,12 +1151,15 @@ bool UrdfParser::parseJoint(UrdfJoint& joint, TiXmlElement *config, ErrorLogger*
                 TiXmlElement *limit_xml = axis_xml->FirstChildElement("limit");
                 if (limit_xml)
                 {
-                    if (!parseJointLimits(joint, limit_xml,logger))
-                    {
-                        logger->reportError("Could not parse limit element for joint:");
-                        logger->reportError(joint.m_name.c_str());
-                        return false;
-                    }
+					if (joint.m_type != URDFContinuousJoint)
+					{
+						if (!parseJointLimits(joint, limit_xml,logger))
+						{
+							logger->reportError("Could not parse limit element for joint:");
+							logger->reportError(joint.m_name.c_str());
+							return false;
+						}
+					}
                 }
                 else if (joint.m_type == URDFRevoluteJoint)
                 {
@@ -1234,12 +1425,12 @@ bool UrdfParser::loadUrdf(const char* urdfText, ErrorLogger* logger, bool forceF
 				for (int i=0;i<link->m_visualArray.size();i++)
 				{
 					UrdfVisual& vis = link->m_visualArray.at(i);
-					if (!vis.m_hasLocalMaterial && vis.m_materialName.c_str())
+					if (!vis.m_geometry.m_hasLocalMaterial && vis.m_materialName.c_str())
 					{
 						UrdfMaterial** mat = m_urdf2Model.m_materials.find(vis.m_materialName.c_str());
 						if (mat && *mat)
 						{
-							vis.m_localMaterial = **mat;
+							vis.m_geometry.m_localMaterial = **mat;
 						} else
 						{
 							//logger->reportError("Cannot find material with name:");
@@ -1429,12 +1620,12 @@ bool UrdfParser::loadSDF(const char* sdfText, ErrorLogger* logger)
                     for (int i=0;i<link->m_visualArray.size();i++)
                     {
                         UrdfVisual& vis = link->m_visualArray.at(i);
-                        if (!vis.m_hasLocalMaterial && vis.m_materialName.c_str())
+                        if (!vis.m_geometry.m_hasLocalMaterial && vis.m_materialName.c_str())
                         {
                             UrdfMaterial** mat = localModel->m_materials.find(vis.m_materialName.c_str());
                             if (mat && *mat)
                             {
-                                vis.m_localMaterial = **mat;
+                                vis.m_geometry.m_localMaterial = **mat;
                             } else
                             {
                                 //logger->reportError("Cannot find material with name:");
@@ -1495,3 +1686,19 @@ bool UrdfParser::loadSDF(const char* sdfText, ErrorLogger* logger)
     return true;
 }
 
+std::string UrdfParser::sourceFileLocation(TiXmlElement* e)
+{
+#if 0
+	//no C++11 etc, no snprintf
+
+	char buf[1024];
+	snprintf(buf, sizeof(buf), "%s:%i", m_urdf2Model.m_sourceFile.c_str(), e->Row());
+	return buf;
+#else
+	char row[1024];
+        sprintf(row,"%d",e->Row());
+        std::string str = m_urdf2Model.m_sourceFile.c_str() + std::string(":") + std::string(row);
+        return str;
+#endif
+
+}

@@ -66,9 +66,9 @@ struct CommonGraphicsApp
 		m_mouseYpos(0.f),
 		m_mouseInitialized(false)
 	{
-		m_backgroundColorRGB[0] = 0.9;
-		m_backgroundColorRGB[1] = 0.9;
-		m_backgroundColorRGB[2] = 1;
+		m_backgroundColorRGB[0] = 0.7;
+		m_backgroundColorRGB[1] = 0.7;
+		m_backgroundColorRGB[2] = 0.8;
 	}
 	virtual ~CommonGraphicsApp()
 	{
@@ -120,7 +120,7 @@ struct CommonGraphicsApp
 	virtual int getUpAxis() const = 0;
 	
 	virtual void swapBuffer() = 0;
-	virtual void drawText( const char* txt, int posX, int posY) = 0;
+	virtual void drawText( const char* txt, int posX, int posY, float size = 1.0f) = 0;
 	virtual void drawText3D( const char* txt, float posX, float posZY, float posZ, float size)=0;
 	virtual void drawTexturedRect(float x0, float y0, float x1, float y1, float color[4], float u0,float v0, float u1, float v1, int useRGBA)=0;
 	virtual int	registerCubeShape(float halfExtentsX,float halfExtentsY, float halfExtentsZ, int textureIndex = -1,  float textureScaling = 1)=0;

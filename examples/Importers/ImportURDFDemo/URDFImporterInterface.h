@@ -15,7 +15,6 @@ public:
 
 	virtual ~URDFImporterInterface() {}
 	
- 
     virtual bool loadURDF(const char* fileName, bool forceFixedBase = false)=0;
 
     virtual bool loadSDF(const char* fileName, bool forceFixedBase = false) { return false;}
@@ -27,9 +26,17 @@ public:
     
     ///pure virtual interfaces, precondition is a valid linkIndex (you can assert/terminate if the linkIndex is out of range)
     virtual std::string getLinkName(int linkIndex) const =0;
+
+	//various derived class in internal source code break with new pure virtual methods, so provide some default implementation
+	virtual std::string getBodyName() const
+	{
+		return "";
+	}
+    
 	/// optional method to provide the link color. return true if the color is available and copied into colorRGBA, return false otherwise
 	virtual bool getLinkColor(int linkIndex, btVector4& colorRGBA) const { return false;}
 
+	virtual int getCollisionGroupAndMask(int linkIndex, int& colGroup, int& colMask) const { return 0;}
 	///this API will likely change, don't override it!
 	virtual bool getLinkContactInfo(int linkIndex, URDFLinkContactInfo& contactInfo ) const  { return false;}
     
@@ -42,15 +49,32 @@ public:
     virtual void getLinkChildIndices(int urdfLinkIndex, btAlignedObjectArray<int>& childLinkIndices) const =0;
     
     virtual bool getJointInfo(int urdfLinkIndex, btTransform& parent2joint, btTransform& linkTransformInWorld, btVector3& jointAxisInJointSpace, int& jointType, btScalar& jointLowerLimit, btScalar& jointUpperLimit, btScalar& jointDamping, btScalar& jointFriction) const =0;
+
+	virtual bool getJointInfo2(int urdfLinkIndex, btTransform& parent2joint, btTransform& linkTransformInWorld, btVector3& jointAxisInJointSpace, int& jointType, btScalar& jointLowerLimit, btScalar& jointUpperLimit, btScalar& jointDamping, btScalar& jointFriction, btScalar& jointMaxForce, btScalar& jointMaxVelocity) const 
+	{
+		//backwards compatibility for custom file importers
+		jointMaxForce = 0;
+		jointMaxVelocity = 0;
+		return getJointInfo(urdfLinkIndex, parent2joint, linkTransformInWorld, jointAxisInJointSpace, jointType, jointLowerLimit, jointUpperLimit, jointDamping, jointFriction);
+	};
     
     virtual bool getRootTransformInWorld(btTransform& rootTransformInWorld) const =0;
     
 	///quick hack: need to rethink the API/dependencies of this
     virtual int convertLinkVisualShapes(int linkIndex, const char* pathPrefix, const btTransform& inertialFrame) const { return -1;}
     
-    virtual void convertLinkVisualShapes2(int linkIndex, const char* pathPrefix, const btTransform& inertialFrame, class btCollisionObject* colObj) const  { }
+    virtual void convertLinkVisualShapes2(int linkIndex, int urdfIndex, const char* pathPrefix, const btTransform& inertialFrame, class btCollisionObject* colObj, int objectIndex) const  { }
+    virtual void setBodyUniqueId(int bodyId) {}
+    virtual int getBodyUniqueId() const { return 0;}
 
+   //default implementation for backward compatibility 
 	virtual class btCompoundShape* convertLinkCollisionShapes(int linkIndex, const char* pathPrefix, const btTransform& localInertiaFrame) const  = 0;
+
+	virtual int getNumAllocatedCollisionShapes() const { return 0;}
+    virtual class btCollisionShape* getAllocatedCollisionShape(int /*index*/ ) {return 0;}
+	virtual int getNumModels() const {return 0;}
+    virtual void activateModel(int /*modelIndex*/) { }
+
 };
 
 #endif //URDF_IMPORTER_INTERFACE_H

@@ -5,17 +5,19 @@
 #include "Bullet3Common/b3AlignedObjectArray.h"
 #include "../CommonInterfaces/CommonRenderInterface.h"
 //#include "../CommonInterfaces/CommonExampleInterface.h"
+#include "../SharedMemory/PhysicsServerCommandProcessor.h"
+
 #include "../CommonInterfaces/CommonGUIHelperInterface.h"
 #include "../SharedMemory/PhysicsServerSharedMemory.h"
+#include "../SharedMemory/PhysicsServerSharedMemory.h"
 #include "../SharedMemory/PhysicsClientC_API.h"
+#include "../SharedMemory/PhysicsDirectC_API.h"
+#include "../SharedMemory/PhysicsDirect.h"
+
 #include <string>
-
-
-
-
-
-
 #include "../Utils/b3Clock.h"
+
+
 #include "../MultiThreading/b3ThreadSupportInterface.h"
 
 
@@ -104,10 +106,10 @@ struct RobotSimThreadLocalStorage
 void	RobotThreadFunc(void* userPtr,void* lsMemory)
 {
 	printf("RobotThreadFunc thread started\n");
-	RobotSimThreadLocalStorage* localStorage = (RobotSimThreadLocalStorage*) lsMemory;
+//	RobotSimThreadLocalStorage* localStorage = (RobotSimThreadLocalStorage*) lsMemory;
 
 	RobotSimArgs* args = (RobotSimArgs*) userPtr;
-	int workLeft = true;
+//	int workLeft = true;
 	b3Clock clock;
 	clock.reset();
 	bool init = true;
@@ -155,7 +157,7 @@ void*	RobotlsMemoryFunc()
 
 ATTRIBUTE_ALIGNED16(class) MultiThreadedOpenGLGuiHelper2 : public GUIHelperInterface
 {
-	CommonGraphicsApp* m_app;
+//	CommonGraphicsApp* m_app;
 	
 	b3CriticalSection* m_cs;
 
@@ -186,9 +188,8 @@ public:
 	int m_instanceId;
 	
 
-	MultiThreadedOpenGLGuiHelper2(CommonGraphicsApp* app, GUIHelperInterface* guiHelper)
-		:m_app(app)
-		,m_cs(0),
+	MultiThreadedOpenGLGuiHelper2( GUIHelperInterface* guiHelper)
+		:	m_cs(0),
 		m_texels(0),
 		m_textureId(-1)
 	{
@@ -211,7 +212,10 @@ public:
 		return m_cs;
 	}
 
-	virtual void createRigidBodyGraphicsObject(btRigidBody* body,const btVector3& color){}
+	virtual void createRigidBodyGraphicsObject(btRigidBody* body,const btVector3& color)
+    {
+        createCollisionObjectGraphicsObject((btCollisionObject*)body, color);
+    }
 
 	btCollisionObject* m_obj;
 	btVector3 m_color2;
@@ -352,12 +356,19 @@ public:
     int m_rgbaBufferSizeInPixels;
     float* m_depthBuffer;
     int m_depthBufferSizeInPixels;
+    int* m_segmentationMaskBuffer;
+    int m_segmentationMaskBufferSizeInPixels;
     int m_startPixelIndex;
     int m_destinationWidth;
     int m_destinationHeight;
     int* m_numPixelsCopied;
 
-	virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, float* depthBuffer, int depthBufferSizeInPixels, int startPixelIndex, int destinationWidth, int destinationHeight, int* numPixelsCopied)
+	virtual void copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], 
+                                  unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, 
+                                  float* depthBuffer, int depthBufferSizeInPixels, 
+                                  int* segmentationMaskBuffer, int segmentationMaskBufferSizeInPixels,
+                                  int startPixelIndex, int destinationWidth, 
+                                  int destinationHeight, int* numPixelsCopied)
 	{
 	    m_cs->lock();
 	    for (int i=0;i<16;i++)
@@ -369,6 +380,8 @@ public:
         m_rgbaBufferSizeInPixels = rgbaBufferSizeInPixels;
         m_depthBuffer = depthBuffer;
         m_depthBufferSizeInPixels = depthBufferSizeInPixels;
+        m_segmentationMaskBuffer = segmentationMaskBuffer;
+        m_segmentationMaskBufferSizeInPixels = segmentationMaskBufferSizeInPixels;
         m_startPixelIndex = startPixelIndex;
         m_destinationWidth = destinationWidth;
         m_destinationHeight = destinationHeight;
@@ -388,10 +401,22 @@ public:
 	virtual void drawText3D( const char* txt, float posX, float posZY, float posZ, float size)
 	{
 	}
+
+		virtual int		addUserDebugText3D( const char* txt, const double positionXYZ[3], const double	textColorRGB[3], double size, double lifeTime)
+	{
+		return -1;
+	}
+	virtual int		addUserDebugLine(const double	debugLineFromXYZ[3], const double	debugLineToXYZ[3], const double	debugLineColorRGB[3], double lineWidth, double lifeTime )
+	{
+		return -1;
+	}
+	virtual void	removeUserDebugItem( int debugItemUniqueId)
+	{
+	}
+	virtual void	removeAllUserDebugItems( )
+	{
+	}
 };
-
-
-
 
 
 
@@ -403,15 +428,23 @@ struct b3RobotSimAPI_InternalData
 	PhysicsServerSharedMemory	m_physicsServer;
 	b3PhysicsClientHandle m_physicsClient;
 
+
 	b3ThreadSupportInterface* m_threadSupport;
 	RobotSimArgs m_args[MAX_ROBOT_NUM_THREADS];
 	MultiThreadedOpenGLGuiHelper2* m_multiThreadedHelper;
+	PhysicsDirect* m_clientServerDirect;
 
+	bool m_useMultiThreading;
 	bool m_connected;
 
 	b3RobotSimAPI_InternalData()
-		:m_multiThreadedHelper(0),
-		m_physicsClient(0),
+		:
+	m_physicsClient(0),
+	m_threadSupport(0),
+	m_multiThreadedHelper(0),
+	
+	m_clientServerDirect(0),
+	m_useMultiThreading(false),
 		m_connected(false)
 	{
 	}
@@ -445,6 +478,84 @@ void b3RobotSimAPI::setGravity(const b3Vector3& gravityAcceleration)
 
 }
 
+void b3RobotSimAPI::setNumSolverIterations(int numIterations)
+{
+    b3SharedMemoryCommandHandle command = b3InitPhysicsParamCommand(m_data->m_physicsClient);
+    b3SharedMemoryStatusHandle statusHandle;
+    b3PhysicsParamSetNumSolverIterations(command, numIterations);
+    statusHandle = b3SubmitClientCommandAndWaitStatus(m_data->m_physicsClient, command);
+    b3Assert(b3GetStatusType(statusHandle)==CMD_CLIENT_COMMAND_COMPLETED);
+
+}
+
+void b3RobotSimAPI::setNumSimulationSubSteps(int numSubSteps)
+{
+    b3SharedMemoryCommandHandle command = b3InitPhysicsParamCommand(m_data->m_physicsClient);
+    b3SharedMemoryStatusHandle statusHandle;
+    b3PhysicsParamSetNumSubSteps(command, numSubSteps);
+    statusHandle = b3SubmitClientCommandAndWaitStatus(m_data->m_physicsClient, command);
+    b3Assert(b3GetStatusType(statusHandle)==CMD_CLIENT_COMMAND_COMPLETED);
+}
+
+/*
+b3SharedMemoryCommandHandle	b3CalculateInverseKinematicsCommandInit(b3PhysicsClientHandle physClient, int bodyIndex,
+	const double* jointPositionsQ, double targetPosition[3]);
+
+int b3GetStatusInverseKinematicsJointPositions(b3SharedMemoryStatusHandle statusHandle,
+	int* bodyUniqueId,
+	int* dofCount,
+	double* jointPositions);
+*/
+bool b3RobotSimAPI::calculateInverseKinematics(const struct b3RobotSimInverseKinematicArgs& args, struct b3RobotSimInverseKinematicsResults& results)
+{
+	btAssert(args.m_endEffectorLinkIndex>=0);
+	btAssert(args.m_bodyUniqueId>=0);
+	
+
+	b3SharedMemoryCommandHandle command = b3CalculateInverseKinematicsCommandInit(m_data->m_physicsClient,args.m_bodyUniqueId);
+	if ((args.m_flags & B3_HAS_IK_TARGET_ORIENTATION) && (args.m_flags & B3_HAS_NULL_SPACE_VELOCITY))
+    {
+        b3CalculateInverseKinematicsPosOrnWithNullSpaceVel(command, args.m_numDegreeOfFreedom, args.m_endEffectorLinkIndex, args.m_endEffectorTargetPosition, args.m_endEffectorTargetOrientation, &args.m_lowerLimits[0], &args.m_upperLimits[0], &args.m_jointRanges[0], &args.m_restPoses[0]);
+    } else if (args.m_flags & B3_HAS_IK_TARGET_ORIENTATION)
+	{
+		b3CalculateInverseKinematicsAddTargetPositionWithOrientation(command,args.m_endEffectorLinkIndex,args.m_endEffectorTargetPosition,args.m_endEffectorTargetOrientation);
+	} else if (args.m_flags & B3_HAS_NULL_SPACE_VELOCITY)
+    {
+        b3CalculateInverseKinematicsPosWithNullSpaceVel(command, args.m_numDegreeOfFreedom, args.m_endEffectorLinkIndex, args.m_endEffectorTargetPosition, &args.m_lowerLimits[0], &args.m_upperLimits[0], &args.m_jointRanges[0], &args.m_restPoses[0]);
+    } else
+	{
+		b3CalculateInverseKinematicsAddTargetPurePosition(command,args.m_endEffectorLinkIndex,args.m_endEffectorTargetPosition);
+	}
+    
+    if (args.m_flags & B3_HAS_JOINT_DAMPING)
+    {
+        b3CalculateInverseKinematicsSetJointDamping(command, args.m_numDegreeOfFreedom, &args.m_jointDamping[0]);
+    }
+
+    b3SharedMemoryStatusHandle statusHandle;
+	statusHandle = b3SubmitClientCommandAndWaitStatus(m_data->m_physicsClient, command);
+
+	
+
+    int numPos=0;
+    
+	bool result = b3GetStatusInverseKinematicsJointPositions(statusHandle,
+		&results.m_bodyUniqueId,
+		&numPos,
+		0);
+    if (result && numPos)
+    {
+        results.m_calculatedJointPositions.resize(numPos);
+        result = b3GetStatusInverseKinematicsJointPositions(statusHandle,
+                                                                 &results.m_bodyUniqueId,
+                                                                 &numPos,
+                                &results.m_calculatedJointPositions[0]);
+        
+    }
+	return result;
+}
+
+
 b3RobotSimAPI::~b3RobotSimAPI()
 {
 	delete m_data;
@@ -452,6 +563,9 @@ b3RobotSimAPI::~b3RobotSimAPI()
 
 void b3RobotSimAPI::processMultiThreadedGraphicsRequests()
 {
+	if (0==m_data->m_multiThreadedHelper)
+		return;
+
 	switch (m_data->m_multiThreadedHelper->getCriticalSection()->getSharedParam(1))
 	{
 	case eRobotSimGUIHelperCreateCollisionShapeGraphicsObject:
@@ -516,7 +630,8 @@ void b3RobotSimAPI::processMultiThreadedGraphicsRequests()
 	case eRobotSimGUIHelperRemoveAllGraphicsInstances:
         {
             m_data->m_multiThreadedHelper->m_childGuiHelper->removeAllGraphicsInstances();
-			int numRenderInstances = m_data->m_multiThreadedHelper->m_childGuiHelper->getRenderInterface()->getTotalNumInstances();
+			int numRenderInstances;
+			numRenderInstances = m_data->m_multiThreadedHelper->m_childGuiHelper->getRenderInterface()->getTotalNumInstances();
 			b3Assert(numRenderInstances==0);
 
             m_data->m_multiThreadedHelper->getCriticalSection()->lock();
@@ -532,6 +647,8 @@ void b3RobotSimAPI::processMultiThreadedGraphicsRequests()
                                                                                  m_data->m_multiThreadedHelper->m_rgbaBufferSizeInPixels,
                                                                                  m_data->m_multiThreadedHelper->m_depthBuffer,
                                                                                  m_data->m_multiThreadedHelper->m_depthBufferSizeInPixels,
+                                                                                 m_data->m_multiThreadedHelper->m_segmentationMaskBuffer,
+                                                                                 m_data->m_multiThreadedHelper->m_segmentationMaskBufferSizeInPixels,
                                                                                  m_data->m_multiThreadedHelper->m_startPixelIndex, 
                                                                                  m_data->m_multiThreadedHelper->m_destinationWidth, 
                                                                                  m_data->m_multiThreadedHelper->m_destinationHeight, 
@@ -548,27 +665,6 @@ void b3RobotSimAPI::processMultiThreadedGraphicsRequests()
 			
 		}
 	}
-	
-
-
-
-	#if 0
-	if (m_options == PHYSICS_SERVER_USE_RTC_CLOCK)
-	{
-		btClock rtc;
-		btScalar endTime = rtc.getTimeMilliseconds() + deltaTime*btScalar(800);
-
-		while (rtc.getTimeMilliseconds()<endTime)
-		{
-			m_physicsServer.processClientCommands();
-		}
-	} else
-	{
-        //for (int i=0;i<10;i++)
-			m_physicsServer.processClientCommands();
-	}
-	#endif
-
 	
 }
 
@@ -595,6 +691,70 @@ int b3RobotSimAPI::getNumJoints(int bodyUniqueId) const
 bool b3RobotSimAPI::getJointInfo(int bodyUniqueId, int jointIndex, b3JointInfo* jointInfo)
 {
 	return (b3GetJointInfo(m_data->m_physicsClient,bodyUniqueId, jointIndex,jointInfo)!=0);
+}
+
+void b3RobotSimAPI::createJoint(int parentBodyIndex, int parentJointIndex, int childBodyIndex, int childJointIndex, b3JointInfo* jointInfo)
+{
+    b3SharedMemoryStatusHandle statusHandle;
+    b3Assert(b3CanSubmitCommand(m_data->m_physicsClient));
+    if (b3CanSubmitCommand(m_data->m_physicsClient))
+    {
+        statusHandle = b3SubmitClientCommandAndWaitStatus(m_data->m_physicsClient, b3InitCreateUserConstraintCommand(m_data->m_physicsClient, parentBodyIndex, parentJointIndex, childBodyIndex, childJointIndex, jointInfo));
+    }
+}
+
+
+bool b3RobotSimAPI::getJointStates(int bodyUniqueId, b3JointStates& state)
+{
+    b3SharedMemoryCommandHandle command = b3RequestActualStateCommandInit(m_data->m_physicsClient,bodyUniqueId);
+    b3SharedMemoryStatusHandle statusHandle = b3SubmitClientCommandAndWaitStatus(m_data->m_physicsClient, command);
+    
+    if (statusHandle)
+    {
+     //   double rootInertialFrame[7];
+        const double* rootLocalInertialFrame;
+        const double* actualStateQ;
+        const double* actualStateQdot;
+        const double* jointReactionForces;
+        
+        int stat = b3GetStatusActualState(statusHandle,
+                        &state.m_bodyUniqueId,
+                        &state.m_numDegreeOfFreedomQ,
+                        &state.m_numDegreeOfFreedomU,
+                        &rootLocalInertialFrame,
+                        &actualStateQ,
+                        &actualStateQdot,
+                        &jointReactionForces);
+        if (stat)
+        {
+            state.m_actualStateQ.resize(state.m_numDegreeOfFreedomQ);
+            state.m_actualStateQdot.resize(state.m_numDegreeOfFreedomU);
+
+            for (int i=0;i<state.m_numDegreeOfFreedomQ;i++)
+            {
+                state.m_actualStateQ[i] = actualStateQ[i];
+            }
+            for (int i=0;i<state.m_numDegreeOfFreedomU;i++)
+            {
+                state.m_actualStateQdot[i] = actualStateQdot[i];
+            }
+            int numJoints = getNumJoints(bodyUniqueId);
+            state.m_jointReactionForces.resize(6*numJoints);
+            for (int i=0;i<numJoints*6;i++)
+            {
+                state.m_jointReactionForces[i] = jointReactionForces[i];
+            }
+            
+            return true;
+        }
+        //rootInertialFrame,
+          //              &state.m_actualStateQ[0],
+            //            &state.m_actualStateQdot[0],
+              //          &state.m_jointReactionForces[0]);
+        
+     
+    }
+    return false;
 }
 
 void b3RobotSimAPI::setJointMotorControl(int bodyUniqueId, int jointIndex, const b3JointMotorArgs& args)
@@ -674,6 +834,7 @@ bool b3RobotSimAPI::loadFile(const struct b3RobotSimLoadFileArgs& args, b3RobotS
 				{
 					b3LoadUrdfCommandSetUseFixedBase(command,true);
 				}
+                b3LoadUrdfCommandSetUseMultiBody(command, args.m_useMultiBody);
 				statusHandle = submitClientCommandAndWaitStatusMultiThreaded(m_data->m_physicsClient, command);
 				statusType = b3GetStatusType(statusHandle);
 
@@ -688,6 +849,7 @@ bool b3RobotSimAPI::loadFile(const struct b3RobotSimLoadFileArgs& args, b3RobotS
 			b3SharedMemoryStatusHandle statusHandle;
 			int statusType;
 			b3SharedMemoryCommandHandle command = b3LoadSdfCommandInit(m_data->m_physicsClient, args.m_fileName.c_str());
+            b3LoadSdfCommandSetUseMultiBody(command, args.m_useMultiBody);
 			statusHandle = submitClientCommandAndWaitStatusMultiThreaded(m_data->m_physicsClient, command);
 			statusType = b3GetStatusType(statusHandle);
 			b3Assert(statusType == CMD_SDF_LOADING_COMPLETED);
@@ -697,7 +859,8 @@ bool b3RobotSimAPI::loadFile(const struct b3RobotSimLoadFileArgs& args, b3RobotS
 				if (numBodies)
 				{
 					results.m_uniqueObjectIds.resize(numBodies);
-					int numBodies = b3GetStatusBodyIndices(statusHandle, &results.m_uniqueObjectIds[0],results.m_uniqueObjectIds.size());
+					int numBodies;
+					numBodies = b3GetStatusBodyIndices(statusHandle, &results.m_uniqueObjectIds[0],results.m_uniqueObjectIds.size());
 
 				}
 				statusOk = true;
@@ -717,94 +880,164 @@ bool b3RobotSimAPI::loadFile(const struct b3RobotSimLoadFileArgs& args, b3RobotS
 
 bool b3RobotSimAPI::connect(GUIHelperInterface* guiHelper)
 {
-	m_data->m_multiThreadedHelper  = new MultiThreadedOpenGLGuiHelper2(guiHelper->getAppInterface(),guiHelper);
-	
-	MultiThreadedOpenGLGuiHelper2* guiHelperWrapper = new MultiThreadedOpenGLGuiHelper2(guiHelper->getAppInterface(),guiHelper);
-
-	
-	
-
-	m_data->m_threadSupport = createRobotSimThreadSupport(MAX_ROBOT_NUM_THREADS);
-
-	for (int i=0;i<m_data->m_threadSupport->getNumTasks();i++)
+	if (m_data->m_useMultiThreading)
 	{
-		RobotSimThreadLocalStorage* storage = (RobotSimThreadLocalStorage*) m_data->m_threadSupport->getThreadLocalMemory(i);
-		b3Assert(storage);
-		storage->threadId = i;
-		//storage->m_sharedMem = data->m_sharedMem;
-	}
+		m_data->m_multiThreadedHelper = new MultiThreadedOpenGLGuiHelper2(guiHelper);
 
 
-		
+		m_data->m_threadSupport = createRobotSimThreadSupport(MAX_ROBOT_NUM_THREADS);
 
-	for (int w=0;w<MAX_ROBOT_NUM_THREADS;w++)
-	{
-		m_data->m_args[w].m_cs = m_data->m_threadSupport->createCriticalSection();
-		m_data->m_args[w].m_cs->setSharedParam(0,eRobotSimIsUnInitialized);
-		int numMoving = 0;
- 		m_data->m_args[w].m_positions.resize(numMoving);
-		m_data->m_args[w].m_physicsServerPtr = &m_data->m_physicsServer;
-		int index = 0;
-			
-		m_data->m_threadSupport->runTask(B3_THREAD_SCHEDULE_TASK, (void*) &m_data->m_args[w], w);
-		while (m_data->m_args[w].m_cs->getSharedParam(0)==eRobotSimIsUnInitialized)
+		for (int i = 0; i < m_data->m_threadSupport->getNumTasks(); i++)
 		{
+			RobotSimThreadLocalStorage* storage = (RobotSimThreadLocalStorage*)m_data->m_threadSupport->getThreadLocalMemory(i);
+			b3Assert(storage);
+			storage->threadId = i;
+			//storage->m_sharedMem = data->m_sharedMem;
 		}
+
+
+
+
+		for (int w = 0; w < MAX_ROBOT_NUM_THREADS; w++)
+		{
+			m_data->m_args[w].m_cs = m_data->m_threadSupport->createCriticalSection();
+			m_data->m_args[w].m_cs->setSharedParam(0, eRobotSimIsUnInitialized);
+			int numMoving = 0;
+			m_data->m_args[w].m_positions.resize(numMoving);
+			m_data->m_args[w].m_physicsServerPtr = &m_data->m_physicsServer;
+			//int index = 0;
+
+			m_data->m_threadSupport->runTask(B3_THREAD_SCHEDULE_TASK, (void*)&m_data->m_args[w], w);
+			while (m_data->m_args[w].m_cs->getSharedParam(0) == eRobotSimIsUnInitialized)
+			{
+			}
+		}
+
+		m_data->m_args[0].m_cs->setSharedParam(1, eRobotSimGUIHelperIdle);
+		m_data->m_multiThreadedHelper->setCriticalSection(m_data->m_args[0].m_cs);
+
+		bool serverConnected;
+		serverConnected = m_data->m_physicsServer.connectSharedMemory(m_data->m_multiThreadedHelper);
+		b3Assert(serverConnected);
+
+		m_data->m_physicsClient = b3ConnectSharedMemory(SHARED_MEMORY_KEY);
+	}
+	else
+	{
+		PhysicsServerCommandProcessor* sdk = new PhysicsServerCommandProcessor;
+		m_data->m_clientServerDirect = new PhysicsDirect(sdk,true);
+		bool connected;
+		connected = m_data->m_clientServerDirect->connect(guiHelper);
+		m_data->m_physicsClient = (b3PhysicsClientHandle)m_data->m_clientServerDirect;
+
 	}
 
-	m_data->m_args[0].m_cs->setSharedParam(1,eRobotSimGUIHelperIdle);
-	m_data->m_multiThreadedHelper->setCriticalSection(m_data->m_args[0].m_cs);
-
-	m_data->m_connected = m_data->m_physicsServer.connectSharedMemory( m_data->m_multiThreadedHelper);
-
-		b3Assert(m_data->m_connected);
-
-	m_data->m_physicsClient = b3ConnectSharedMemory(SHARED_MEMORY_KEY);
-	int canSubmit = b3CanSubmitCommand(m_data->m_physicsClient);
-	b3Assert(canSubmit);
-	return m_data->m_connected && canSubmit;
+	//client connected
+	m_data->m_connected = b3CanSubmitCommand(m_data->m_physicsClient);
+	
+	b3Assert(m_data->m_connected);
+	return m_data->m_connected && m_data->m_connected;
 }
 
 void b3RobotSimAPI::disconnect()
 {
-
-	for (int i=0;i<MAX_ROBOT_NUM_THREADS;i++)
+	if (m_data->m_useMultiThreading)
 	{
-		m_data->m_args[i].m_cs->lock();
-		m_data->m_args[i].m_cs->setSharedParam(0,eRequestTerminateRobotSim);
-		m_data->m_args[i].m_cs->unlock();
+		for (int i = 0; i < MAX_ROBOT_NUM_THREADS; i++)
+		{
+			m_data->m_args[i].m_cs->lock();
+			m_data->m_args[i].m_cs->setSharedParam(0, eRequestTerminateRobotSim);
+			m_data->m_args[i].m_cs->unlock();
+		}
+		int numActiveThreads = MAX_ROBOT_NUM_THREADS;
+
+		while (numActiveThreads)
+		{
+			int arg0, arg1;
+			if (m_data->m_threadSupport->isTaskCompleted(&arg0, &arg1, 0))
+			{
+				numActiveThreads--;
+				printf("numActiveThreads = %d\n", numActiveThreads);
+
+			}
+			else
+			{
+			}
+		};
+
+		printf("stopping threads\n");
+
+		delete m_data->m_threadSupport;
+		m_data->m_threadSupport = 0;
 	}
-	int numActiveThreads = MAX_ROBOT_NUM_THREADS;
-
-	while (numActiveThreads)
-            {
-		int arg0,arg1;
-                    if (m_data->m_threadSupport->isTaskCompleted(&arg0,&arg1,0))
-                    {
-                            numActiveThreads--;
-                            printf("numActiveThreads = %d\n",numActiveThreads);
-
-                    } else
-                    {
-                    }
-            };
-
-	printf("stopping threads\n");
-
-	delete m_data->m_threadSupport;   
-	m_data->m_threadSupport = 0;
-
 	b3DisconnectSharedMemory(m_data->m_physicsClient);
 	m_data->m_physicsServer.disconnectSharedMemory(true);
+	
 	m_data->m_connected = false;
 }
 
+
+void b3RobotSimAPI::debugDraw(int debugDrawMode)
+{
+	if (m_data->m_clientServerDirect)
+	{
+		m_data->m_clientServerDirect->debugDraw(debugDrawMode);
+	}
+}
 void b3RobotSimAPI::renderScene()
 {
-	if (m_data->m_multiThreadedHelper->m_childGuiHelper->getRenderInterface())
+	if (m_data->m_useMultiThreading)
 	{
-		m_data->m_multiThreadedHelper->m_childGuiHelper->getRenderInterface()->writeTransforms();
+		if (m_data->m_multiThreadedHelper->m_childGuiHelper->getRenderInterface())
+		{
+			m_data->m_multiThreadedHelper->m_childGuiHelper->getRenderInterface()->writeTransforms();
+		}
 	}
 
+    
+	if (m_data->m_clientServerDirect)
+	{
+		m_data->m_clientServerDirect->renderScene();
+	}
+    
 	m_data->m_physicsServer.renderScene();
+}
+
+void b3RobotSimAPI::getBodyJacobian(int bodyUniqueId, int linkIndex, const double* localPosition, const double* jointPositions, const double* jointVelocities, const double* jointAccelerations, double* linearJacobian, double* angularJacobian)
+{
+    b3SharedMemoryCommandHandle command = b3CalculateJacobianCommandInit(m_data->m_physicsClient, bodyUniqueId, linkIndex, localPosition, jointPositions, jointVelocities, jointAccelerations);
+    b3SharedMemoryStatusHandle statusHandle = b3SubmitClientCommandAndWaitStatus(m_data->m_physicsClient, command);
+    
+    if (b3GetStatusType(statusHandle) == CMD_CALCULATED_JACOBIAN_COMPLETED)
+    {
+        b3GetStatusJacobian(statusHandle, linearJacobian, angularJacobian);
+    }
+}
+
+void b3RobotSimAPI::getLinkState(int bodyUniqueId, int linkIndex, double* worldPosition, double* worldOrientation)
+{
+    b3SharedMemoryCommandHandle command = b3RequestActualStateCommandInit(m_data->m_physicsClient,bodyUniqueId);
+    b3SharedMemoryStatusHandle statusHandle = b3SubmitClientCommandAndWaitStatus(m_data->m_physicsClient, command);
+    
+    if (b3GetStatusType(statusHandle) == CMD_ACTUAL_STATE_UPDATE_COMPLETED)
+    {
+        b3LinkState linkState;
+        b3GetLinkState(m_data->m_physicsClient, statusHandle, linkIndex, &linkState);
+        worldPosition[0] = linkState.m_worldPosition[0];
+        worldPosition[1] = linkState.m_worldPosition[1];
+        worldPosition[2] = linkState.m_worldPosition[2];
+        worldOrientation[0] = linkState.m_worldOrientation[0];
+        worldOrientation[1] = linkState.m_worldOrientation[1];
+        worldOrientation[2] = linkState.m_worldOrientation[2];
+        worldOrientation[3] = linkState.m_worldOrientation[3];
+    }
+}
+
+void b3RobotSimAPI::loadBunny(double scale, double mass, double collisionMargin)
+{
+    b3SharedMemoryCommandHandle command = b3LoadBunnyCommandInit(m_data->m_physicsClient);
+    b3LoadBunnySetScale(command, scale);
+    b3LoadBunnySetMass(command, mass);
+    b3LoadBunnySetCollisionMargin(command, collisionMargin);
+    b3SubmitClientCommand(m_data->m_physicsClient, command);
 }

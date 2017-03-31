@@ -10,8 +10,6 @@
 
 #include "../OpenGLWindow/SimpleCamera.h"
 #include "../OpenGLWindow/GLInstanceGraphicsShape.h"
-//backwards compatibility
-#include "GL_ShapeDrawer.h"
 
 
 #define BT_LINE_BATCH_SIZE 512
@@ -29,7 +27,8 @@ struct MyDebugVec3
 	float y;
 	float z;
 };
-class MyDebugDrawer : public btIDebugDraw
+
+ATTRIBUTE_ALIGNED16( class )MyDebugDrawer : public btIDebugDraw
 {
 	CommonGraphicsApp* m_glApp;
 	int m_debugMode;
@@ -40,6 +39,7 @@ class MyDebugDrawer : public btIDebugDraw
 	DefaultColors m_ourColors;
 
 public:
+	BT_DECLARE_ALIGNED_ALLOCATOR();
 
 	MyDebugDrawer(CommonGraphicsApp* app)
 		: m_glApp(app)
@@ -84,7 +84,10 @@ public:
 
 	virtual void	drawContactPoint(const btVector3& PointOnB,const btVector3& normalOnB,btScalar distance,int lifeTime,const btVector3& color)
 	{
-        drawLine(PointOnB,PointOnB+normalOnB,color);
+        drawLine(PointOnB,PointOnB+normalOnB*distance,color);
+		btVector3 ncolor(0, 0, 0);
+		drawLine(PointOnB, PointOnB + normalOnB*0.01, ncolor);
+		
 	}
      
 
@@ -142,11 +145,27 @@ struct OpenGLGuiHelperInternalData
 {
 	struct CommonGraphicsApp* m_glApp;
 	class MyDebugDrawer* m_debugDraw;
-	GL_ShapeDrawer* m_gl2ShapeDrawer;
-	
+	bool m_vrMode;
+	int m_vrSkipShadowPass;
+
 	btAlignedObjectArray<unsigned char> m_rgbaPixelBuffer1;
 	btAlignedObjectArray<float> m_depthBuffer1;
+	
+	VisualizerFlagCallback m_visualizerFlagCallback;
+	OpenGLGuiHelperInternalData()
+		:m_vrMode(false),
+		m_vrSkipShadowPass(0),
+		m_visualizerFlagCallback(0)
+	{
+	}
+
 };
+
+void OpenGLGuiHelper::setVRMode(bool vrMode)
+{
+	m_data->m_vrMode = vrMode;
+	m_data->m_vrSkipShadowPass = 0;
+}
 
 
 
@@ -156,19 +175,13 @@ OpenGLGuiHelper::OpenGLGuiHelper(CommonGraphicsApp* glApp, bool useOpenGL2)
 	m_data->m_glApp = glApp;
 	m_data->m_debugDraw = 0;
 	
-	m_data->m_gl2ShapeDrawer = 0;
-
-	if (useOpenGL2)
-	{
-		m_data->m_gl2ShapeDrawer = new GL_ShapeDrawer();
-
-	}
+	
 }
 
 OpenGLGuiHelper::~OpenGLGuiHelper()
 {
 	delete m_data->m_debugDraw;
-	delete m_data->m_gl2ShapeDrawer;
+
 	delete m_data;
 }
 
@@ -266,34 +279,56 @@ void OpenGLGuiHelper::createCollisionShapeGraphicsObject(btCollisionShape* colli
 }
 void OpenGLGuiHelper::syncPhysicsToGraphics(const btDiscreteDynamicsWorld* rbWorld)
 {
+	//in VR mode, we skip the synchronization for the second eye
+	if (m_data->m_vrMode && m_data->m_vrSkipShadowPass==1)
+		return;
+
 	int numCollisionObjects = rbWorld->getNumCollisionObjects();
-	for (int i = 0; i<numCollisionObjects; i++)
 	{
-		btCollisionObject* colObj = rbWorld->getCollisionObjectArray()[i];
-		btVector3 pos = colObj->getWorldTransform().getOrigin();
-		btQuaternion orn = colObj->getWorldTransform().getRotation();
-		int index = colObj->getUserIndex();
-		if (index >= 0)
+		B3_PROFILE("write all InstanceTransformToCPU");
+		for (int i = 0; i<numCollisionObjects; i++)
 		{
-			m_data->m_glApp->m_renderer->writeSingleInstanceTransformToCPU(pos, orn, index);
+			B3_PROFILE("writeSingleInstanceTransformToCPU");
+			btCollisionObject* colObj = rbWorld->getCollisionObjectArray()[i];
+			btVector3 pos = colObj->getWorldTransform().getOrigin();
+			btQuaternion orn = colObj->getWorldTransform().getRotation();
+			int index = colObj->getUserIndex();
+			if (index >= 0)
+			{
+				m_data->m_glApp->m_renderer->writeSingleInstanceTransformToCPU(pos, orn, index);
+			}
 		}
 	}
-	m_data->m_glApp->m_renderer->writeTransforms();
+	{
+		B3_PROFILE("writeTransforms");
+		m_data->m_glApp->m_renderer->writeTransforms();
+	}
 }
 
 
 
 void OpenGLGuiHelper::render(const btDiscreteDynamicsWorld* rbWorld)
 {
-
-	m_data->m_glApp->m_renderer->renderScene();
-	//backwards compatible OpenGL2 rendering
-
-	if (m_data->m_gl2ShapeDrawer && rbWorld)
+	if (m_data->m_vrMode)
 	{
-		m_data->m_gl2ShapeDrawer->enableTexture(true);
-		m_data->m_gl2ShapeDrawer->drawScene(rbWorld,true);
+		//in VR, we skip the shadow generation for the second eye
+		
+		if (m_data->m_vrSkipShadowPass>=1)
+		{
+			m_data->m_glApp->m_renderer->renderSceneInternal(B3_USE_SHADOWMAP_RENDERMODE);
+			m_data->m_vrSkipShadowPass=0;
+			
+		} else
+		{
+			m_data->m_glApp->m_renderer->renderScene();	
+			m_data->m_vrSkipShadowPass++;
+		}
+	} else
+	{
+		m_data->m_glApp->m_renderer->renderScene();	
 	}
+	
+	
 }
 void OpenGLGuiHelper::createPhysicsDebugDrawer(btDiscreteDynamicsWorld* rbWorld)
 {
@@ -326,6 +361,20 @@ void OpenGLGuiHelper::setUpAxis(int axis)
 
 }
 
+
+void	OpenGLGuiHelper::setVisualizerFlagCallback(VisualizerFlagCallback callback)
+{
+	m_data->m_visualizerFlagCallback = callback;
+}
+
+
+void OpenGLGuiHelper::setVisualizerFlag(int flag, int enable)
+{
+	if (m_data->m_visualizerFlagCallback)
+		(m_data->m_visualizerFlagCallback)(flag,enable);
+}
+
+
 void OpenGLGuiHelper::resetCamera(float camDist, float pitch, float yaw, float camPosX,float camPosY, float camPosZ)
 {
 	if (getRenderInterface() && getRenderInterface()->getActiveCamera())
@@ -338,7 +387,12 @@ void OpenGLGuiHelper::resetCamera(float camDist, float pitch, float yaw, float c
 }
 
 
-void OpenGLGuiHelper::copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, float* depthBuffer, int depthBufferSizeInPixels, int startPixelIndex, int destinationWidth, int destinationHeight, int* numPixelsCopied)
+void OpenGLGuiHelper::copyCameraImageData(const float viewMatrix[16], const float projectionMatrix[16], 
+                                          unsigned char* pixelsRGBA, int rgbaBufferSizeInPixels, 
+                                          float* depthBuffer, int depthBufferSizeInPixels, 
+                                          int* segmentationMaskBuffer, int segmentationMaskBufferSizeInPixels,
+                                          int startPixelIndex, int destinationWidth, 
+                                          int destinationHeight, int* numPixelsCopied)
 {
     int sourceWidth = m_data->m_glApp->m_window->getWidth()*m_data->m_glApp->m_window->getRetinaScale();
     int sourceHeight  = m_data->m_glApp->m_window->getHeight()*m_data->m_glApp->m_window->getRetinaScale();
@@ -358,42 +412,67 @@ void OpenGLGuiHelper::copyCameraImageData(const float viewMatrix[16], const floa
 			SimpleCamera tempCam;
 			getRenderInterface()->setActiveCamera(&tempCam);
 			getRenderInterface()->getActiveCamera()->setVRCamera(viewMatrix,projectionMatrix);
-			getRenderInterface()->renderScene();
+			{
+				BT_PROFILE("renderScene");
+				getRenderInterface()->renderScene();
+			}
 			getRenderInterface()->setActiveCamera(oldCam);
 			
 			{
+				BT_PROFILE("copy pixels");
                 btAlignedObjectArray<unsigned char> sourceRgbaPixelBuffer;
                 btAlignedObjectArray<float> sourceDepthBuffer;
                 //copy the image into our local cache
                 sourceRgbaPixelBuffer.resize(sourceWidth*sourceHeight*numBytesPerPixel);
                 sourceDepthBuffer.resize(sourceWidth*sourceHeight);
-                m_data->m_glApp->getScreenPixels(&(sourceRgbaPixelBuffer[0]),sourceRgbaPixelBuffer.size(), &sourceDepthBuffer[0],sizeof(float)*sourceDepthBuffer.size());
+				{
+					BT_PROFILE("getScreenPixels");
+	                m_data->m_glApp->getScreenPixels(&(sourceRgbaPixelBuffer[0]),sourceRgbaPixelBuffer.size(), &sourceDepthBuffer[0],sizeof(float)*sourceDepthBuffer.size());
+				}
 			
                 m_data->m_rgbaPixelBuffer1.resize(destinationWidth*destinationHeight*numBytesPerPixel);
                 m_data->m_depthBuffer1.resize(destinationWidth*destinationHeight);
                 //rescale and flip
-                
-                for (int i=0;i<destinationWidth;i++)
-                {
-                    for (int j=0;j<destinationHeight;j++)
-                    {
-                        int xIndex = int(float(i)*(float(sourceWidth)/float(destinationWidth)));
-                        int yIndex = int(float(destinationHeight-1-j)*(float(sourceHeight)/float(destinationHeight)));
-                        btClamp(xIndex,0,sourceWidth);
-                        btClamp(yIndex,0,sourceHeight);
-                        int bytesPerPixel = 4; //RGBA
+				{
+					BT_PROFILE("resize and flip");
+					for (int j=0;j<destinationHeight;j++)
+					{
+						for (int i=0;i<destinationWidth;i++)
+						{
+							int xIndex = int(float(i)*(float(sourceWidth)/float(destinationWidth)));
+							int yIndex = int(float(destinationHeight-1-j)*(float(sourceHeight)/float(destinationHeight)));
+							btClamp(xIndex,0,sourceWidth);
+							btClamp(yIndex,0,sourceHeight);
+							int bytesPerPixel = 4; //RGBA
                         
-                        int sourcePixelIndex = (xIndex+yIndex*sourceWidth)*bytesPerPixel;
-                        m_data->m_rgbaPixelBuffer1[(i+j*destinationWidth)*4+0] = sourceRgbaPixelBuffer[sourcePixelIndex+0];
-                        m_data->m_rgbaPixelBuffer1[(i+j*destinationWidth)*4+1] = sourceRgbaPixelBuffer[sourcePixelIndex+1];
-                        m_data->m_rgbaPixelBuffer1[(i+j*destinationWidth)*4+2] = sourceRgbaPixelBuffer[sourcePixelIndex+2];
-                        m_data->m_rgbaPixelBuffer1[(i+j*destinationWidth)*4+3] = 255;
-                    }
+							int sourcePixelIndex = (xIndex+yIndex*sourceWidth)*bytesPerPixel;
+							int sourceDepthIndex = xIndex+yIndex*sourceWidth;
+#define COPY4PIXELS 1
+#ifdef COPY4PIXELS
+							int* dst = (int*)&m_data->m_rgbaPixelBuffer1[(i+j*destinationWidth)*4+0];
+							int* src = (int*)&sourceRgbaPixelBuffer[sourcePixelIndex+0];
+							*dst = *src;
+							
+#else
+							m_data->m_rgbaPixelBuffer1[(i+j*destinationWidth)*4+0] = sourceRgbaPixelBuffer[sourcePixelIndex+0];
+							m_data->m_rgbaPixelBuffer1[(i+j*destinationWidth)*4+1] = sourceRgbaPixelBuffer[sourcePixelIndex+1];
+							m_data->m_rgbaPixelBuffer1[(i+j*destinationWidth)*4+2] = sourceRgbaPixelBuffer[sourcePixelIndex+2];
+							m_data->m_rgbaPixelBuffer1[(i+j*destinationWidth)*4+3] = 255;
+#endif                        
+							if (depthBuffer)
+							{ 
+								m_data->m_depthBuffer1[i+j*destinationWidth] = sourceDepthBuffer[sourceDepthIndex];
+							}
+                        
+						}
+					}
                 }
             }
         }
         if (pixelsRGBA)
         {
+			BT_PROFILE("copy rgba pixels");
+
             for (int i=0;i<numRequestedPixels*numBytesPerPixel;i++)
             {
                 pixelsRGBA[i] = m_data->m_rgbaPixelBuffer1[i+startPixelIndex*numBytesPerPixel];
@@ -401,9 +480,11 @@ void OpenGLGuiHelper::copyCameraImageData(const float viewMatrix[16], const floa
         }
         if (depthBuffer)
         {
+			BT_PROFILE("copy depth buffer pixels");
+
             for (int i=0;i<numRequestedPixels;i++)
             {
-                depthBuffer[i] = m_data->m_depthBuffer1[i];
+                depthBuffer[i] = m_data->m_depthBuffer1[i+startPixelIndex];
             }
         }
 		if (numPixelsCopied)
@@ -461,6 +542,8 @@ void OpenGLGuiHelper::autogenerateGraphicsObjects(btDiscreteDynamicsWorld* rbWor
     
 void OpenGLGuiHelper::drawText3D( const char* txt, float posX, float posY, float posZ, float size)
 {
+	B3_PROFILE("OpenGLGuiHelper::drawText3D");
+
     btAssert(m_data->m_glApp);
     m_data->m_glApp->drawText3D(txt,posX,posY,posZ,size);
 }
@@ -470,3 +553,10 @@ struct CommonGraphicsApp* OpenGLGuiHelper::getAppInterface()
 	return m_data->m_glApp;
 }
 
+void	OpenGLGuiHelper::dumpFramesToVideo(const char* mp4FileName)
+{
+	if (m_data->m_glApp)
+	{
+		m_data->m_glApp->dumpFramesToVideo(mp4FileName);
+	}
+}
